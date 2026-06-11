@@ -1,0 +1,31 @@
+{
+  "name": "@count/cli",
+  "version": "0.1.0",
+  "description": "COUNT Partner CLI — OAuth login and local MCP server for Claude Code, Cursor, and agents.",
+  "license": "ISC",
+  "type": "module",
+  "bin": {
+    "count": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check:types": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"dist/__tests__/**/*.test.js\""
+  },
+  "dependencies": {
+    "@count/partner-mcp": "0.1.0",
+    "commander": "^14.0.3",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
