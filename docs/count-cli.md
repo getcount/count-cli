@@ -1,8 +1,8 @@
 # COUNT CLI — partner login and local MCP
 
-The COUNT CLI (`@count/cli`, binary `count`) is the supported path for **Claude Code**, **Cursor**, and other **CLI/agent** integrations that need programmatic access across one or more COUNT workspaces.
+The COUNT CLI (`@countfinancial/cli`, binary `count`) is the supported path for **Claude Code**, **Cursor**, and other **CLI/agent** integrations that need programmatic access across one or more COUNT workspaces.
 
-It wraps the existing Partner OAuth flow and launches the local `@count/partner-mcp` stdio server — the same `COUNT_*` tools exposed by `https://api.getcount.com/mcp`, without relying on remote MCP OAuth loopback quirks.
+It bundles the COUNT Partner MCP server and the same `COUNT_*` tools exposed by `https://api.getcount.com/mcp`, without relying on remote MCP OAuth loopback quirks.
 
 ## When to use the CLI vs remote MCP
 
@@ -25,33 +25,16 @@ You can change the port with `count login --port <port>`; the registered URI mus
 
 ## Install
 
-From this repository (after `@count/partner-mcp` is available on npm):
+```bash
+npm install -g @countfinancial/cli
+```
+
+From this repository:
 
 ```bash
 npm install
 npm run build
 npm link
-```
-
-Until `@count/partner-mcp` is published, build and link it from the [count-api](https://github.com/NotAllTalk/count-api) monorepo first:
-
-```bash
-cd /path/to/count-api
-npm install
-npm run mcp:count:build
-npm link --workspace @count/partner-mcp
-
-cd /path/to/count-cli
-npm link @count/partner-mcp
-npm install
-npm run build
-npm link
-```
-
-When published to npm:
-
-```bash
-npm install -g @count/cli
 ```
 
 ## Workflow
@@ -60,13 +43,13 @@ npm install -g @count/cli
 count init --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET"
 count login
 count status
-count mcp print-config   # paste into Claude Code MCP settings
+count mcp print-config   # paste into Claude Code / Cursor MCP settings
 count mcp                # or run the stdio server directly
 ```
 
-Credentials are stored in `~/.count/credentials.json` (mode `600`).
+Credentials are stored in `~/.count/credentials.json` (mode `600`). Refreshed access tokens are written back to that file automatically during MCP sessions.
 
-## Claude Code configuration
+## Claude Code / Cursor configuration
 
 After `count login`, run:
 
@@ -74,7 +57,20 @@ After `count login`, run:
 count mcp print-config
 ```
 
-Paste the JSON into your Claude Code MCP configuration. The server uses Node to run `@count/partner-mcp` with your stored tokens.
+Paste the JSON into your MCP configuration. The config points at the `count mcp` command, which loads credentials from `~/.count/credentials.json` at runtime — no secrets are embedded in the MCP config file.
+
+Example output:
+
+```json
+{
+  "mcpServers": {
+    "count": {
+      "command": "/path/to/node",
+      "args": ["/path/to/@countfinancial/cli/dist/index.js", "mcp"]
+    }
+  }
+}
+```
 
 ## Multiple workspaces
 
@@ -88,6 +84,8 @@ Each `count login` completes OAuth for **one workspace**. Repeat `count login` f
 | `Partner credentials are not configured` | Run `count init` |
 | `You are not logged in` | Run `count login` |
 | MCP tools return 401 | Run `count login` again to refresh stored tokens |
+| Windows: `'clientName' is not recognized...` during login | Upgrade to `@countfinancial/cli@0.1.5` or later — older versions broke OAuth URLs containing `&` |
+| Windows: browser opens but login page shows an error | Same as above; or run `count login --no-open` and paste the full URL manually |
 
 ## Related docs
 

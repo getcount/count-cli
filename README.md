@@ -1,36 +1,13 @@
-# COUNT CLI (`@count/cli`)
+# COUNT CLI (`@countfinancial/cli`)
 
 Command-line tool for partner integrations that need **low-friction OAuth login** and a **local MCP server** for Claude Code, Cursor, and other agent runtimes.
 
+The MCP server is bundled inside this package — no separate npm install required.
+
 ## Install
 
-When `@count/partner-mcp` is published to npm:
-
 ```bash
-npm install
-npm run build
-npm link
-```
-
-Until then, link `@count/partner-mcp` from the [count-api](https://github.com/NotAllTalk/count-api) monorepo:
-
-```bash
-cd /path/to/count-api
-npm install
-npm run mcp:count:build
-npm link --workspace @count/partner-mcp
-
-cd /path/to/count-cli
-npm link @count/partner-mcp
-npm install
-npm run build
-npm link
-```
-
-When published to npm:
-
-```bash
-npm install -g @count/cli
+npm install -g @countfinancial/cli
 ```
 
 ## Quick start
@@ -79,7 +56,7 @@ count mcp print-config
 | `count login` | Browser OAuth login + token storage |
 | `count logout` | Delete `~/.count/credentials.json` |
 | `count status` | Show whether credentials/tokens are present |
-| `count mcp` | Start the local `@count/partner-mcp` stdio server |
+| `count mcp` | Start the local COUNT Partner MCP stdio server |
 | `count mcp print-config` | Emit MCP JSON for Claude Code / Cursor |
 
 ## Environment
