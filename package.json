@@ -1,6 +1,6 @@
 {
-  "name": "@count/cli",
-  "version": "0.1.0",
+  "name": "@countfinancial/cli",
+  "version": "0.1.6",
   "description": "COUNT Partner CLI — OAuth login and local MCP server for Claude Code, Cursor, and agents.",
   "license": "ISC",
   "type": "module",
@@ -11,14 +11,27 @@
     "dist",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getcount/count-cli.git"
+  },
+  "homepage": "https://github.com/getcount/count-cli#readme",
+  "bugs": {
+    "url": "https://github.com/getcount/count-cli/issues"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "check:types": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test \"dist/__tests__/**/*.test.js\""
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@count/partner-mcp": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
     "zod": "^4.4.1"
   },
   "devDependencies": {

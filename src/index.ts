@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { CLI_VERSION } from './constants.js';
 import { createCli } from './cli.js';
 
 async function main(): Promise<void> {
-  const program = createCli({ version: '0.1.0' });
+  const program = createCli({ version: CLI_VERSION });
   await program.parseAsync(process.argv);
 }
 

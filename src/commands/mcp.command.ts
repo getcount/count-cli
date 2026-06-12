@@ -17,14 +17,16 @@ export async function runMcpStartCommand(): Promise<void> {
   const credentials = await loadCredentials();
   assertLoggedInCredentials(credentials);
 
+  const workspaceLabel = credentials.workspaceName ?? credentials.workspaceId ?? 'authenticated workspace';
+  process.stderr.write(
+    `COUNT MCP server started for ${workspaceLabel}. Listening on stdio — press Ctrl+C to stop.\n`,
+  );
+
   const exitCode = await launchPartnerMcpServer({ credentials });
   process.exit(exitCode);
 }
 
 export async function runMcpPrintConfigCommand(): Promise<void> {
-  const credentials = await loadCredentials();
-  assertLoggedInCredentials(credentials);
-
-  const configuration = buildClaudeCodeMcpConfig({ credentials });
+  const configuration = buildClaudeCodeMcpConfig();
   process.stdout.write(`${JSON.stringify(configuration, null, 2)}\n`);
 }

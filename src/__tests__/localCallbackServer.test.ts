@@ -31,6 +31,31 @@ describe('localCallbackServer', () => {
     }
   });
 
+  it('closes quickly after a successful callback even when close is called twice', async () => {
+    const callbackServer = await startLocalCallbackServer({
+      host: '127.0.0.1',
+      port: 0,
+      callbackPath: '/callback',
+      expectedState: 'expected-state',
+      timeoutMs: 5000,
+    });
+
+    const waitPromise = callbackServer.waitForCallback();
+    const callbackUrl = new URL(callbackServer.redirectUri);
+    callbackUrl.searchParams.set('code', 'auth-code');
+    callbackUrl.searchParams.set('state', 'expected-state');
+
+    await fetch(callbackUrl.toString());
+    await waitPromise;
+
+    const closeStartedAt = Date.now();
+    await callbackServer.close();
+    await callbackServer.close();
+    const closeDurationMs = Date.now() - closeStartedAt;
+
+    assert.ok(closeDurationMs < 1000, `expected close to finish quickly, took ${closeDurationMs}ms`);
+  });
+
   it('ignores a malformed callback before accepting a valid redirect', async () => {
     const callbackServer = await startLocalCallbackServer({
       host: '127.0.0.1',

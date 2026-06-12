@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { PartnerApiClient } from '@count/partner-mcp/partner-api-client';
-import type { TokenSet } from '@count/partner-mcp/types';
+import { PartnerApiClient } from '../partner-mcp/partnerApiClient.js';
+import type { TokenSet } from '../partner-mcp/types.js';
 import {
   DEFAULT_CALLBACK_HOST,
   DEFAULT_CALLBACK_PATH,
@@ -108,7 +108,9 @@ export async function runOAuthLogin(params: RunOAuthLoginParams): Promise<RunOAu
 
     process.stdout.write('Waiting for OAuth callback...\n');
     const callbackResult = await callbackServer.waitForCallback();
+    await callbackServer.close();
 
+    process.stdout.write('OAuth callback received. Exchanging authorization code for tokens...\n');
     const partnerClient = new PartnerApiClient({
       config: {
         apiBaseUrl: credentials.apiBaseUrl,

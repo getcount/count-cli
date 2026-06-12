@@ -1,8 +1,8 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
 import type { CountCliCredentials } from '../types.js';
-
-const require = createRequire(import.meta.url);
+import { getConfigFilePath } from './credentialStore.service.js';
 
 interface BuildMcpEnvironmentParams {
   credentials: CountCliCredentials;
@@ -19,12 +19,18 @@ export function buildMcpEnvironment(params: BuildMcpEnvironmentParams): NodeJS.P
     COUNT_ACCESS_TOKEN: credentials.accessToken ?? '',
     COUNT_REFRESH_TOKEN: credentials.refreshToken ?? '',
     COUNT_REQUEST_TIMEOUT_MS: String(credentials.requestTimeoutMs),
+    COUNT_CREDENTIALS_FILE: getConfigFilePath(),
   };
 }
 
 export function resolvePartnerMcpEntryPath(): string {
-  // The package root export points at dist/index.js (the stdio MCP entry).
-  return require.resolve('@count/partner-mcp');
+  const currentDirectoryPath = path.dirname(fileURLToPath(import.meta.url));
+  return path.join(currentDirectoryPath, '../partner-mcp/index.js');
+}
+
+export function resolveCliEntryPath(): string {
+  const currentDirectoryPath = path.dirname(fileURLToPath(import.meta.url));
+  return path.join(currentDirectoryPath, '../index.js');
 }
 
 interface LaunchPartnerMcpServerParams {
@@ -53,27 +59,12 @@ export async function launchPartnerMcpServer(params: LaunchPartnerMcpServerParam
   });
 }
 
-interface BuildClaudeCodeMcpConfigParams {
-  credentials: CountCliCredentials;
-}
-
-export function buildClaudeCodeMcpConfig(params: BuildClaudeCodeMcpConfigParams): Record<string, unknown> {
-  const entryPath = resolvePartnerMcpEntryPath();
-  const environment = buildMcpEnvironment({ credentials: params.credentials });
-
+export function buildClaudeCodeMcpConfig(): Record<string, unknown> {
   return {
     mcpServers: {
       count: {
         command: process.execPath,
-        args: [entryPath],
-        env: {
-          COUNT_API_URL: environment.COUNT_API_URL,
-          COUNT_CLIENT_ID: environment.COUNT_CLIENT_ID,
-          COUNT_CLIENT_SECRET: environment.COUNT_CLIENT_SECRET,
-          COUNT_ACCESS_TOKEN: environment.COUNT_ACCESS_TOKEN,
-          COUNT_REFRESH_TOKEN: environment.COUNT_REFRESH_TOKEN,
-          COUNT_REQUEST_TIMEOUT_MS: environment.COUNT_REQUEST_TIMEOUT_MS,
-        },
+        args: [resolveCliEntryPath(), 'mcp'],
       },
     },
   };

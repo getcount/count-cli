@@ -84,7 +84,7 @@ Each `count login` completes OAuth for **one workspace**. Repeat `count login` f
 | `Partner credentials are not configured` | Run `count init` |
 | `You are not logged in` | Run `count login` |
 | MCP tools return 401 | Run `count login` again to refresh stored tokens |
-| Windows: `'clientName' is not recognized...` during login | Upgrade to `@countfinancial/cli@0.1.5` or later — older versions broke OAuth URLs containing `&` |
+| Windows: `'clientName' is not recognized...` during login | Upgrade to `@countfinancial/cli@0.1.6` or later — older versions broke OAuth URLs containing `&` |
 | Windows: browser opens but login page shows an error | Same as above; or run `count login --no-open` and paste the full URL manually |
 
 ## Related docs

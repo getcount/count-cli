@@ -69,6 +69,50 @@ function buildErrorHtml(params: { message: string }): string {
 </html>`;
 }
 
+interface SendHtmlResponseParams {
+  response: http.ServerResponse;
+  statusCode: number;
+  html: string;
+}
+
+function sendHtmlResponse(params: SendHtmlResponseParams): void {
+  const { response, statusCode, html } = params;
+
+  response.writeHead(statusCode, {
+    'content-type': 'text/html; charset=utf-8',
+    Connection: 'close',
+    'Cache-Control': 'no-store',
+  });
+  response.end(html);
+
+  // Browsers often keep the callback connection open; tear it down so server.close() does not hang.
+  if (response.socket && !response.socket.destroyed) {
+    response.socket.destroy();
+  }
+}
+
+interface CloseCallbackServerParams {
+  server: http.Server;
+  timeoutHandle?: NodeJS.Timeout;
+}
+
+async function closeCallbackServer(params: CloseCallbackServerParams): Promise<void> {
+  const { server, timeoutHandle } = params;
+
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle);
+  }
+
+  if (typeof server.closeAllConnections === 'function') {
+    server.closeAllConnections();
+  }
+
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+    setTimeout(resolve, 250).unref();
+  });
+}
+
 export async function startLocalCallbackServer(
   params: StartLocalCallbackServerParams,
 ): Promise<StartLocalCallbackServerResult> {
@@ -77,6 +121,7 @@ export async function startLocalCallbackServer(
   let timeoutHandle: NodeJS.Timeout | undefined;
 
   let callbackSettled = false;
+  let serverClosed = false;
 
   const callbackPromise = new Promise<OAuthCallbackResult>((resolve, reject) => {
     resolveCallback = resolve;
@@ -104,8 +149,11 @@ export async function startLocalCallbackServer(
         expectedState: params.expectedState,
       });
 
-      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(buildSuccessHtml());
+      sendHtmlResponse({
+        response,
+        statusCode: 200,
+        html: buildSuccessHtml(),
+      });
 
       if (!callbackSettled) {
         callbackSettled = true;
@@ -116,8 +164,11 @@ export async function startLocalCallbackServer(
       const parsedUrl = new URL(request.url, 'http://localhost');
       const oauthProviderError = parsedUrl.searchParams.get('error');
 
-      response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(buildErrorHtml({ message }));
+      sendHtmlResponse({
+        response,
+        statusCode: 400,
+        html: buildErrorHtml({ message }),
+      });
 
       // Ignore malformed probes (refresh, prefetch) so a later valid redirect can still succeed.
       if (oauthProviderError && !callbackSettled) {
@@ -153,20 +204,12 @@ export async function startLocalCallbackServer(
   };
 
   const close = async (): Promise<void> => {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
+    if (serverClosed) {
+      return;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
+    serverClosed = true;
+    await closeCallbackServer({ server, timeoutHandle });
   };
 
   return {
