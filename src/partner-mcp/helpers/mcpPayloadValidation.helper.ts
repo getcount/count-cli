@@ -611,7 +611,7 @@ function canonicalizeUuidForPartnerLookup(uuid: string): string {
 
 function classifyUuidReferenceFieldPath(params: ClassifyUuidReferenceFieldPathParams): UuidReferenceVerificationKind | null {
   const { fieldPath } = params;
-  if (fieldPath.includes('customerUuid')) {
+  if (fieldPath.includes('customerUuid') || /\.customers\[\d+\]\.uuid$/.test(fieldPath)) {
     return 'customer';
   }
   if (fieldPath.includes('projectUuid')) {
