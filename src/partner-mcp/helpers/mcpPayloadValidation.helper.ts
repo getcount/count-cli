@@ -578,27 +578,80 @@ interface LoadPartnerRecordUuidSetParams {
   uuidFieldNames: string[];
 }
 
+const PARTNER_REFERENCE_LIST_PAGE_LIMIT = 5000;
+const PARTNER_REFERENCE_LIST_MAX_PAGES = 200;
+
+interface ExtractPartnerListTotalRecordsParams {
+  response: unknown;
+}
+
+function extractPartnerListTotalRecords(params: ExtractPartnerListTotalRecordsParams): number | undefined {
+  const { response } = params;
+  if (!response || typeof response !== 'object') {
+    return undefined;
+  }
+
+  const responseObject = response as Record<string, unknown>;
+  if (typeof responseObject.totalRecords === 'number' && Number.isFinite(responseObject.totalRecords)) {
+    return responseObject.totalRecords;
+  }
+
+  const dataObject = responseObject.data;
+  if (dataObject && typeof dataObject === 'object') {
+    const nestedTotalRecords = (dataObject as Record<string, unknown>).totalRecords;
+    if (typeof nestedTotalRecords === 'number' && Number.isFinite(nestedTotalRecords)) {
+      return nestedTotalRecords;
+    }
+  }
+
+  return undefined;
+}
+
 async function loadPartnerRecordUuidSet(params: LoadPartnerRecordUuidSetParams): Promise<Set<string>> {
   const { client, path, recordsKey, uuidFieldNames } = params;
-  const response = await client.request({
-    method: 'GET',
-    path,
-    query: { page: 1, limit: 5000 },
-    requiresUserAuth: true,
-  });
-
   const uuidSet = new Set<string>();
-  for (const rawRecord of extractPartnerListRecords({ response, recordsKey })) {
-    if (!rawRecord || typeof rawRecord !== 'object') {
-      continue;
+  let page = 1;
+  let totalRecords: number | undefined;
+  let fetchedRecordCount = 0;
+
+  while (page <= PARTNER_REFERENCE_LIST_MAX_PAGES) {
+    const response = await client.request({
+      method: 'GET',
+      path,
+      query: { page, limit: PARTNER_REFERENCE_LIST_PAGE_LIMIT },
+      requiresUserAuth: true,
+    });
+
+    if (totalRecords === undefined) {
+      totalRecords = extractPartnerListTotalRecords({ response });
     }
-    const recordObject = rawRecord as Record<string, unknown>;
-    for (const uuidFieldName of uuidFieldNames) {
-      const fieldValue = recordObject[uuidFieldName];
-      if (typeof fieldValue === 'string' && fieldValue.trim() !== '') {
-        uuidSet.add(canonicalizeUuidForPartnerLookup(fieldValue));
+
+    const pageRecords = extractPartnerListRecords({ response, recordsKey });
+    for (const rawRecord of pageRecords) {
+      if (!rawRecord || typeof rawRecord !== 'object') {
+        continue;
+      }
+      const recordObject = rawRecord as Record<string, unknown>;
+      for (const uuidFieldName of uuidFieldNames) {
+        const fieldValue = recordObject[uuidFieldName];
+        if (typeof fieldValue === 'string' && fieldValue.trim() !== '') {
+          uuidSet.add(canonicalizeUuidForPartnerLookup(fieldValue));
+        }
       }
     }
+
+    fetchedRecordCount += pageRecords.length;
+    if (pageRecords.length === 0) {
+      break;
+    }
+    if (pageRecords.length < PARTNER_REFERENCE_LIST_PAGE_LIMIT) {
+      break;
+    }
+    if (totalRecords !== undefined && fetchedRecordCount >= totalRecords) {
+      break;
+    }
+
+    page += 1;
   }
 
   return uuidSet;
