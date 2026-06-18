@@ -724,10 +724,11 @@ interface ProbePartnerResourceByUuidParams {
 
 async function probePartnerResourceByUuid(params: ProbePartnerResourceByUuidParams): Promise<boolean> {
   const { client, pathTemplate, uuid } = params;
+  const canonicalUuid = canonicalizeUuidForPartnerLookup(uuid);
   try {
     await client.request({
       method: 'GET',
-      path: pathTemplate.replace('{uuid}', encodeURIComponent(uuid)),
+      path: pathTemplate.replace('{uuid}', encodeURIComponent(canonicalUuid)),
       requiresUserAuth: true,
     });
     return true;
