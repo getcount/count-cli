@@ -134,6 +134,48 @@ export function buildMcpRecoveryHint(params: BuildMcpRecoveryHintParams): McpRec
   return undefined;
 }
 
+interface ExtractMachineErrorCodeParams {
+  errorPayload: Record<string, unknown>;
+}
+
+/** Read machine error codes from top-level fields or nested COUNT API responseBody. */
+function extractMachineErrorCode(params: ExtractMachineErrorCodeParams): string | undefined {
+  const { errorPayload } = params;
+
+  if (typeof errorPayload.error === 'string' && errorPayload.error.trim() !== '') {
+    return errorPayload.error.trim();
+  }
+  if (typeof errorPayload.errorCode === 'string' && errorPayload.errorCode.trim() !== '') {
+    return errorPayload.errorCode.trim();
+  }
+
+  const responseBody = errorPayload.responseBody;
+  if (!responseBody || typeof responseBody !== 'object') {
+    return undefined;
+  }
+
+  const responseBodyRecord = responseBody as Record<string, unknown>;
+  if (typeof responseBodyRecord.error === 'string' && responseBodyRecord.error.trim() !== '') {
+    return responseBodyRecord.error.trim();
+  }
+  if (typeof responseBodyRecord.errorCode === 'string' && responseBodyRecord.errorCode.trim() !== '') {
+    return responseBodyRecord.errorCode.trim();
+  }
+
+  const nestedData = responseBodyRecord.data;
+  if (nestedData && typeof nestedData === 'object') {
+    const nestedDataRecord = nestedData as Record<string, unknown>;
+    if (typeof nestedDataRecord.error === 'string' && nestedDataRecord.error.trim() !== '') {
+      return nestedDataRecord.error.trim();
+    }
+    if (typeof nestedDataRecord.errorCode === 'string' && nestedDataRecord.errorCode.trim() !== '') {
+      return nestedDataRecord.errorCode.trim();
+    }
+  }
+
+  return undefined;
+}
+
 interface AttachMcpRecoveryHintParams {
   errorPayload: Record<string, unknown>;
   toolName?: string;
@@ -144,12 +186,7 @@ export function attachMcpRecoveryHint(params: AttachMcpRecoveryHintParams): Reco
   const { errorPayload, toolName } = params;
   const message = typeof errorPayload.message === 'string' ? errorPayload.message : undefined;
   const statusCode = typeof errorPayload.statusCode === 'number' ? errorPayload.statusCode : undefined;
-  const errorCode =
-    typeof errorPayload.error === 'string'
-      ? errorPayload.error
-      : typeof errorPayload.errorCode === 'string'
-        ? errorPayload.errorCode
-        : undefined;
+  const errorCode = extractMachineErrorCode({ errorPayload });
   const responseBody = errorPayload.responseBody;
 
   const recoveryHint = buildMcpRecoveryHint({

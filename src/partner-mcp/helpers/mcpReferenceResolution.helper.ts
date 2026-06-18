@@ -93,7 +93,129 @@ interface BuildEmailFieldResolutionParams {
   records: CustomerEmailListRecord[];
 }
 
-const LIST_LIMIT = 25;
+const LIST_PAGE_LIMIT = 100;
+const REFERENCE_RESOLUTION_MAX_PAGES = 50;
+
+async function fetchListRecords(params: FetchListRecordsParams): Promise<ListRecord[]> {
+  const { client, path, search, extraQuery, recordsKey, nameField } = params;
+  const accumulatedRecords: ListRecord[] = [];
+  let page = 1;
+
+  while (page <= REFERENCE_RESOLUTION_MAX_PAGES) {
+    const query: QueryParams = {
+      ...(extraQuery ?? {}),
+      search,
+      limit: LIST_PAGE_LIMIT,
+      page,
+    };
+
+    const response = await client.request({
+      method: 'GET',
+      path,
+      query,
+      requiresUserAuth: true,
+    });
+
+    const pageRecords = parseListRecordsFromResponse({ response, recordsKey, nameField });
+    accumulatedRecords.push(...pageRecords);
+
+    const nameMatchProbe = buildFieldResolution({
+      field: 'nameSearchProbe',
+      searchTerm: search,
+      records: accumulatedRecords,
+    });
+    if (nameMatchProbe.matchConfidence !== 'not_found') {
+      break;
+    }
+
+    if (pageRecords.length < LIST_PAGE_LIMIT) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return accumulatedRecords;
+}
+
+interface ParseListRecordsFromResponseParams {
+  response: unknown;
+  recordsKey: string;
+  nameField: string;
+}
+
+function parseListRecordsFromResponse(params: ParseListRecordsFromResponseParams): ListRecord[] {
+  const { response, recordsKey, nameField } = params;
+  const rawRecords = extractRecordsArray({ response, recordsKey });
+  const listRecords: ListRecord[] = [];
+
+  for (const rawRecord of rawRecords) {
+    if (!rawRecord || typeof rawRecord !== 'object') continue;
+    const recordObject = rawRecord as Record<string, unknown>;
+    const uuid = extractRecordUuid({ recordObject });
+    const nameValue = recordObject[nameField];
+    if (!uuid || typeof nameValue !== 'string' || nameValue.trim() === '') continue;
+    listRecords.push({ uuid, name: nameValue.trim() });
+  }
+
+  return listRecords;
+}
+
+async function fetchCustomerEmailRecords(params: FetchCustomerEmailRecordsParams): Promise<CustomerEmailListRecord[]> {
+  const { client, search } = params;
+  const accumulatedRecords: CustomerEmailListRecord[] = [];
+  let page = 1;
+
+  while (page <= REFERENCE_RESOLUTION_MAX_PAGES) {
+    const response = await client.request({
+      method: 'GET',
+      path: '/partners/customers',
+      query: {
+        search,
+        limit: LIST_PAGE_LIMIT,
+        page,
+      },
+      requiresUserAuth: true,
+    });
+
+    const rawRecords = extractRecordsArray({ response, recordsKey: 'customers' });
+    const pageRecords: CustomerEmailListRecord[] = [];
+
+    for (const rawRecord of rawRecords) {
+      if (!rawRecord || typeof rawRecord !== 'object') continue;
+      const recordObject = rawRecord as Record<string, unknown>;
+      const uuid = extractRecordUuid({ recordObject });
+      const customerName = recordObject.customer;
+      if (!uuid || typeof customerName !== 'string' || customerName.trim() === '') continue;
+
+      const emailAddresses = extractCustomerEmailAddresses({ recordObject });
+      pageRecords.push({
+        uuid,
+        name: customerName.trim(),
+        emailAddresses,
+      });
+    }
+
+    accumulatedRecords.push(...pageRecords);
+
+    const emailMatchProbe = buildEmailFieldResolution({
+      field: 'customerEmailProbe',
+      searchTerm: search,
+      records: accumulatedRecords,
+    });
+    if (emailMatchProbe.matchConfidence !== 'not_found') {
+      break;
+    }
+
+    if (pageRecords.length < LIST_PAGE_LIMIT) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return accumulatedRecords;
+}
 
 export async function resolveMcpReferences(params: ResolveMcpReferencesParams): Promise<ResolveMcpReferencesResult> {
   const { client } = params;
@@ -140,15 +262,15 @@ export async function resolveMcpReferences(params: ResolveMcpReferencesParams): 
   }
 
   if (params.accountName && params.accountName.trim() !== '') {
-    const accountQuery: QueryParams = { search: params.accountName.trim(), limit: LIST_LIMIT };
+    const accountExtraQuery: QueryParams = {};
     if (params.accountType && params.accountType.trim() !== '') {
-      accountQuery.type = params.accountType.trim();
+      accountExtraQuery.type = params.accountType.trim();
     }
     const accountRecords = await fetchListRecords({
       client,
       path: '/partners/chart-of-accounts',
       search: params.accountName.trim(),
-      extraQuery: accountQuery,
+      extraQuery: accountExtraQuery,
       recordsKey: 'accounts',
       nameField: 'name',
     });
@@ -184,71 +306,6 @@ export async function resolveMcpReferences(params: ResolveMcpReferencesParams): 
   }
 
   return { resolutions };
-}
-
-async function fetchListRecords(params: FetchListRecordsParams): Promise<ListRecord[]> {
-  const { client, path, search, extraQuery, recordsKey, nameField } = params;
-  const query: QueryParams = {
-    search,
-    limit: LIST_LIMIT,
-    page: 1,
-    ...(extraQuery ?? {}),
-  };
-
-  const response = await client.request({
-    method: 'GET',
-    path,
-    query,
-    requiresUserAuth: true,
-  });
-
-  const rawRecords = extractRecordsArray({ response, recordsKey });
-  const listRecords: ListRecord[] = [];
-
-  for (const rawRecord of rawRecords) {
-    if (!rawRecord || typeof rawRecord !== 'object') continue;
-    const recordObject = rawRecord as Record<string, unknown>;
-    const uuid = extractRecordUuid({ recordObject });
-    const nameValue = recordObject[nameField];
-    if (!uuid || typeof nameValue !== 'string' || nameValue.trim() === '') continue;
-    listRecords.push({ uuid, name: nameValue.trim() });
-  }
-
-  return listRecords;
-}
-
-async function fetchCustomerEmailRecords(params: FetchCustomerEmailRecordsParams): Promise<CustomerEmailListRecord[]> {
-  const { client, search } = params;
-  const response = await client.request({
-    method: 'GET',
-    path: '/partners/customers',
-    query: {
-      search,
-      limit: LIST_LIMIT,
-      page: 1,
-    },
-    requiresUserAuth: true,
-  });
-
-  const rawRecords = extractRecordsArray({ response, recordsKey: 'customers' });
-  const customerEmailRecords: CustomerEmailListRecord[] = [];
-
-  for (const rawRecord of rawRecords) {
-    if (!rawRecord || typeof rawRecord !== 'object') continue;
-    const recordObject = rawRecord as Record<string, unknown>;
-    const uuid = extractRecordUuid({ recordObject });
-    const customerName = recordObject.customer;
-    if (!uuid || typeof customerName !== 'string' || customerName.trim() === '') continue;
-
-    const emailAddresses = extractCustomerEmailAddresses({ recordObject });
-    customerEmailRecords.push({
-      uuid,
-      name: customerName.trim(),
-      emailAddresses,
-    });
-  }
-
-  return customerEmailRecords;
 }
 
 interface ExtractCustomerEmailAddressesParams {

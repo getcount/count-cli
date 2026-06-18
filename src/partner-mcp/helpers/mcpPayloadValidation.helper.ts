@@ -245,6 +245,11 @@ function validateRequiredFieldsForTool(params: ValidateRequiredFieldsForToolPara
     return;
   }
 
+  if (toolName === 'COUNT_bulk_update_customers') {
+    validateBulkUpdateCustomerRows({ body, issues });
+    return;
+  }
+
   if (toolName === 'COUNT_bulk_create_journal_entries') {
     validateBulkJournalEntryRows({ body, issues });
     return;
@@ -331,6 +336,36 @@ function validateBulkCustomerRows(params: ValidateBulkCustomerRowsParams): void 
         path: `body.customers[${index}].customer`,
         code: 'missing_required',
         message: 'Required field customer (display name) is missing.',
+      });
+    }
+  });
+}
+
+interface ValidateBulkUpdateCustomerRowsParams {
+  body: Record<string, unknown>;
+  issues: McpPayloadValidationIssue[];
+}
+
+function validateBulkUpdateCustomerRows(params: ValidateBulkUpdateCustomerRowsParams): void {
+  const { body, issues } = params;
+  const customers = body.customers;
+  if (!Array.isArray(customers)) return;
+
+  customers.forEach((_customer, index) => {
+    if (!_customer || typeof _customer !== 'object') {
+      issues.push({
+        path: `body.customers[${index}]`,
+        code: 'missing_required',
+        message: 'Each customer row must be an object.',
+      });
+      return;
+    }
+    const customerObject = _customer as Record<string, unknown>;
+    if (!hasNonEmptyString(customerObject.uuid)) {
+      issues.push({
+        path: `body.customers[${index}].uuid`,
+        code: 'missing_required',
+        message: 'Each customer update row requires uuid (external customer id from list_customers).',
       });
     }
   });
@@ -447,7 +482,31 @@ function validateCreateBillBody(params: ValidateCreateBillBodyParams): void {
         message: 'Use categoryAccountUuid from list_accounts instead of categoryAccountId.',
       });
     }
+    if (!hasRequiredNumericField(lineItemObject.quantity)) {
+      issues.push({
+        path: `body.lineItems[${index}].quantity`,
+        code: 'missing_required',
+        message: 'Each line item requires quantity.',
+      });
+    }
+    if (!hasRequiredNumericField(lineItemObject.price)) {
+      issues.push({
+        path: `body.lineItems[${index}].price`,
+        code: 'missing_required',
+        message: 'Each line item requires price.',
+      });
+    }
   });
+}
+
+function hasRequiredNumericField(value: unknown): boolean {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return true;
+  }
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
+    return true;
+  }
+  return false;
 }
 
 function hasNonEmptyString(value: unknown): boolean {
