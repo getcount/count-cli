@@ -217,6 +217,14 @@ function validateLegacyBillBodyFields(params: ValidateLegacyBillBodyFieldsParams
   for (const legacyRule of BILL_LEGACY_BODY_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(body, legacyRule.bodyField)) continue;
     if (Object.prototype.hasOwnProperty.call(body, legacyRule.uuidField)) continue;
+    const legacyBodyValue = body[legacyRule.bodyField];
+    if (
+      legacyRule.bodyField === 'tags' &&
+      Array.isArray(legacyBodyValue) &&
+      legacyBodyValue.length === 0
+    ) {
+      continue;
+    }
     issues.push({
       path: `body.${legacyRule.bodyField}`,
       code: 'legacy_numeric_field',
@@ -550,7 +558,16 @@ function walkValueForUuidReferences(params: CollectUuidReferencesParams): void {
   for (const [fieldName, fieldValue] of Object.entries(valueObject)) {
     const fieldPath = `${currentPath}.${fieldName}`;
     if (typeof fieldValue === 'string' && fieldValue.trim() !== '' && UUID_FIELD_PATTERN.test(fieldName)) {
-      references.push({ path: fieldPath, uuid: fieldValue.trim() });
+      if (fieldName.endsWith('Uuids') && fieldValue.includes(',')) {
+        fieldValue.split(',').forEach((_uuidSegment, index) => {
+          const trimmedUuidSegment = _uuidSegment.trim();
+          if (trimmedUuidSegment !== '') {
+            references.push({ path: `${fieldPath}[${index}]`, uuid: trimmedUuidSegment });
+          }
+        });
+      } else {
+        references.push({ path: fieldPath, uuid: fieldValue.trim() });
+      }
     } else if (Array.isArray(fieldValue) && fieldName.endsWith('Uuids')) {
       fieldValue.forEach((_uuidValue, index) => {
         if (typeof _uuidValue === 'string' && _uuidValue.trim() !== '') {
