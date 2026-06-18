@@ -119,15 +119,6 @@ async function fetchListRecords(params: FetchListRecordsParams): Promise<ListRec
     const pageRecords = parseListRecordsFromResponse({ response, recordsKey, nameField });
     accumulatedRecords.push(...pageRecords);
 
-    const nameMatchProbe = buildFieldResolution({
-      field: 'nameSearchProbe',
-      searchTerm: search,
-      records: accumulatedRecords,
-    });
-    if (nameMatchProbe.matchConfidence !== 'not_found') {
-      break;
-    }
-
     if (pageRecords.length < LIST_PAGE_LIMIT) {
       break;
     }
@@ -197,15 +188,6 @@ async function fetchCustomerEmailRecords(params: FetchCustomerEmailRecordsParams
     }
 
     accumulatedRecords.push(...pageRecords);
-
-    const emailMatchProbe = buildEmailFieldResolution({
-      field: 'customerEmailProbe',
-      searchTerm: search,
-      records: accumulatedRecords,
-    });
-    if (emailMatchProbe.matchConfidence !== 'not_found') {
-      break;
-    }
 
     if (pageRecords.length < LIST_PAGE_LIMIT) {
       break;
