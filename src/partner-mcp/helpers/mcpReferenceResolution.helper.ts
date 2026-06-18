@@ -1,4 +1,4 @@
-import { QueryParams } from '../types.js';
+import type { QueryParams } from '../types.js';
 
 export interface McpReferenceResolutionPartnerClient {
   request(params: {
@@ -46,6 +46,12 @@ interface ListRecord {
   name: string;
 }
 
+interface CustomerEmailListRecord {
+  uuid: string;
+  name: string;
+  emailAddresses: string[];
+}
+
 interface FetchListRecordsParams {
   client: McpReferenceResolutionPartnerClient;
   path: string;
@@ -55,9 +61,19 @@ interface FetchListRecordsParams {
   nameField: string;
 }
 
+interface FetchCustomerEmailRecordsParams {
+  client: McpReferenceResolutionPartnerClient;
+  search: string;
+}
+
 interface ScoreNameMatchParams {
   searchTerm: string;
   candidateName: string;
+}
+
+interface ScoreEmailMatchParams {
+  searchTerm: string;
+  candidateEmail: string;
 }
 
 interface ScoreNameMatchResult {
@@ -69,6 +85,12 @@ interface BuildFieldResolutionParams {
   field: string;
   searchTerm: string;
   records: ListRecord[];
+}
+
+interface BuildEmailFieldResolutionParams {
+  field: string;
+  searchTerm: string;
+  records: CustomerEmailListRecord[];
 }
 
 const LIST_LIMIT = 25;
@@ -104,15 +126,12 @@ export async function resolveMcpReferences(params: ResolveMcpReferencesParams): 
   }
 
   if (params.customerEmail && params.customerEmail.trim() !== '') {
-    const customerEmailRecords = await fetchListRecords({
+    const customerEmailRecords = await fetchCustomerEmailRecords({
       client,
-      path: '/partners/customers',
       search: params.customerEmail.trim(),
-      recordsKey: 'customers',
-      nameField: 'customer',
     });
     resolutions.push(
-      buildFieldResolution({
+      buildEmailFieldResolution({
         field: 'customerEmail',
         searchTerm: params.customerEmail.trim(),
         records: customerEmailRecords,
@@ -198,6 +217,66 @@ async function fetchListRecords(params: FetchListRecordsParams): Promise<ListRec
   return listRecords;
 }
 
+async function fetchCustomerEmailRecords(params: FetchCustomerEmailRecordsParams): Promise<CustomerEmailListRecord[]> {
+  const { client, search } = params;
+  const response = await client.request({
+    method: 'GET',
+    path: '/partners/customers',
+    query: {
+      search,
+      limit: LIST_LIMIT,
+      page: 1,
+    },
+    requiresUserAuth: true,
+  });
+
+  const rawRecords = extractRecordsArray({ response, recordsKey: 'customers' });
+  const customerEmailRecords: CustomerEmailListRecord[] = [];
+
+  for (const rawRecord of rawRecords) {
+    if (!rawRecord || typeof rawRecord !== 'object') continue;
+    const recordObject = rawRecord as Record<string, unknown>;
+    const uuid = extractRecordUuid({ recordObject });
+    const customerName = recordObject.customer;
+    if (!uuid || typeof customerName !== 'string' || customerName.trim() === '') continue;
+
+    const emailAddresses = extractCustomerEmailAddresses({ recordObject });
+    customerEmailRecords.push({
+      uuid,
+      name: customerName.trim(),
+      emailAddresses,
+    });
+  }
+
+  return customerEmailRecords;
+}
+
+interface ExtractCustomerEmailAddressesParams {
+  recordObject: Record<string, unknown>;
+}
+
+function extractCustomerEmailAddresses(params: ExtractCustomerEmailAddressesParams): string[] {
+  const { recordObject } = params;
+  const emailAddresses: string[] = [];
+
+  if (typeof recordObject.email === 'string' && recordObject.email.trim() !== '') {
+    emailAddresses.push(recordObject.email.trim());
+  }
+
+  const contacts = recordObject.contacts;
+  if (Array.isArray(contacts)) {
+    for (const contact of contacts) {
+      if (!contact || typeof contact !== 'object') continue;
+      const contactEmail = (contact as Record<string, unknown>).email;
+      if (typeof contactEmail === 'string' && contactEmail.trim() !== '') {
+        emailAddresses.push(contactEmail.trim());
+      }
+    }
+  }
+
+  return emailAddresses;
+}
+
 interface ExtractRecordsArrayParams {
   response: unknown;
   recordsKey: string;
@@ -251,6 +330,16 @@ export function scoreNameMatch(params: ScoreNameMatchParams): ScoreNameMatchResu
   return { score: 0, matchConfidence: 'not_found' };
 }
 
+export function scoreEmailMatch(params: ScoreEmailMatchParams): ScoreNameMatchResult {
+  const normalizedSearch = params.searchTerm.trim().toLowerCase();
+  const normalizedCandidateEmail = params.candidateEmail.trim().toLowerCase();
+
+  if (normalizedSearch === normalizedCandidateEmail) {
+    return { score: 100, matchConfidence: 'exact' };
+  }
+  return { score: 0, matchConfidence: 'not_found' };
+}
+
 function buildFieldResolution(params: BuildFieldResolutionParams): McpReferenceResolutionFieldResult {
   const { field, searchTerm, records } = params;
 
@@ -270,6 +359,81 @@ function buildFieldResolution(params: BuildFieldResolutionParams): McpReferenceR
       record: _record,
       ...scoreNameMatch({ searchTerm, candidateName: _record.name }),
     }))
+    .filter((_scored) => _scored.score > 0)
+    .sort((_left, _right) => _right.score - _left.score);
+
+  if (scoredRecords.length === 0) {
+    return {
+      field,
+      searchTerm,
+      uuid: null,
+      name: null,
+      matchConfidence: 'not_found',
+      issue: 'not_found',
+    };
+  }
+
+  const topScore = scoredRecords[0].score;
+  const topMatches = scoredRecords.filter((_scored) => _scored.score === topScore);
+
+  if (topMatches.length > 1) {
+    return {
+      field,
+      searchTerm,
+      uuid: null,
+      name: null,
+      matchConfidence: 'ambiguous',
+      issue: 'ambiguous',
+      candidates: topMatches.slice(0, 5).map((_scored) => ({
+        uuid: _scored.record.uuid,
+        name: _scored.record.name,
+      })),
+    };
+  }
+
+  const bestMatch = topMatches[0];
+  return {
+    field,
+    searchTerm,
+    uuid: bestMatch.record.uuid,
+    name: bestMatch.record.name,
+    matchConfidence: bestMatch.matchConfidence,
+  };
+}
+
+function buildEmailFieldResolution(params: BuildEmailFieldResolutionParams): McpReferenceResolutionFieldResult {
+  const { field, searchTerm, records } = params;
+
+  if (records.length === 0) {
+    return {
+      field,
+      searchTerm,
+      uuid: null,
+      name: null,
+      matchConfidence: 'not_found',
+      issue: 'not_found',
+    };
+  }
+
+  const scoredRecords = records
+    .map((_record) => {
+      let bestScore = 0;
+      let bestMatchConfidence: McpReferenceMatchConfidence = 'not_found';
+
+      for (const emailAddress of _record.emailAddresses) {
+        const emailScore = scoreEmailMatch({ searchTerm, candidateEmail: emailAddress });
+        if (emailScore.score > bestScore) {
+          bestScore = emailScore.score;
+          bestMatchConfidence = emailScore.matchConfidence;
+        }
+      }
+
+      return {
+        record: _record,
+        score: bestScore,
+        matchConfidence: bestMatchConfidence,
+      };
+    })
     .filter((_scored) => _scored.score > 0)
     .sort((_left, _right) => _right.score - _left.score);
 
