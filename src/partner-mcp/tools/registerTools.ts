@@ -4,6 +4,11 @@ import { z } from 'zod';
 import { PartnerApiClient, PartnerApiError } from '../partnerApiClient.js';
 import type { JsonObject, QueryParams, ToolDefinition } from '../types.js';
 import { getToolDefinition, toolDefinitions } from './definitions.js';
+import * as mcpKnowledgeHelper from '../helpers/mcpKnowledge.helper.js';
+import * as mcpPlaybooksHelper from '../helpers/mcpPlaybooks.helper.js';
+import * as mcpRecoveryHintHelper from '../helpers/mcpRecoveryHint.helper.js';
+import * as mcpReferenceResolutionHelper from '../helpers/mcpReferenceResolution.helper.js';
+import * as mcpPayloadValidationHelper from '../helpers/mcpPayloadValidation.helper.js';
 
 interface RegisterToolsParams {
   server: McpServer;
@@ -26,6 +31,7 @@ interface SuccessResultParams {
 
 interface ErrorResultParams {
   error: unknown;
+  toolName?: string;
 }
 
 interface GetQueryParams {
@@ -91,6 +97,7 @@ async function executeTool(params: ExecuteToolParams): Promise<CallToolResult> {
           error: new Error(
             `Unknown tool "${targetName}". Available COUNT_* tools can be discovered via list_tools.`,
           ),
+          toolName: tool.name,
         });
       }
       return successResult({
@@ -102,13 +109,87 @@ async function executeTool(params: ExecuteToolParams): Promise<CallToolResult> {
           partnerApiPath: target.pathTemplate,
           readOnly: target.readOnly,
           destructive: target.destructive,
-          // Body / query schemas evolve in lockstep with the partner API so the
-          // canonical reference for field names lives in the public docs. We
-          // point clients there explicitly to avoid drifting documentation.
           documentation: 'https://developers.getcount.com/',
           tips: buildTips({ target }),
         },
       });
+    }
+
+    if (tool.name === 'COUNT_knowledge') {
+      const topic = typeof input.topic === 'string' ? input.topic : undefined;
+      const search = typeof input.search === 'string' ? input.search : undefined;
+      const knowledgeLookup = mcpKnowledgeHelper.lookupMcpKnowledge({ topic, search });
+      return successResult({
+        result: {
+          topics: knowledgeLookup.topics,
+          availableTopicIds: knowledgeLookup.availableTopicIds,
+          hint:
+            knowledgeLookup.topics.length === 0
+              ? 'No matching FAQ topic. Omit topic/search to list all topics, or pass topic authorize_additional_workspaces for workspace authorization help.'
+              : undefined,
+        },
+      });
+    }
+
+    if (tool.name === 'COUNT_playbooks') {
+      const playbook = typeof input.playbook === 'string' ? input.playbook : undefined;
+      const search = typeof input.search === 'string' ? input.search : undefined;
+      const playbookLookup = mcpPlaybooksHelper.lookupMcpPlaybooks({ playbook, search });
+      return successResult({
+        result: {
+          playbooks: playbookLookup.playbooks,
+          availablePlaybookIds: playbookLookup.availablePlaybookIds,
+          hint:
+            playbookLookup.playbooks.length === 0
+              ? 'No matching playbook. Omit playbook/search to list all playbooks, or pass playbook pay_vendor_bill for bill payment steps.'
+              : undefined,
+        },
+      });
+    }
+
+    if (tool.name === 'COUNT_resolve_references') {
+      const resolutionResult = await mcpReferenceResolutionHelper.resolveMcpReferences({
+        client,
+        vendorName: typeof input.vendorName === 'string' ? input.vendorName : undefined,
+        customerName: typeof input.customerName === 'string' ? input.customerName : undefined,
+        customerEmail: typeof input.customerEmail === 'string' ? input.customerEmail : undefined,
+        accountName: typeof input.accountName === 'string' ? input.accountName : undefined,
+        accountType: typeof input.accountType === 'string' ? input.accountType : undefined,
+        projectName: typeof input.projectName === 'string' ? input.projectName : undefined,
+        tagName: typeof input.tagName === 'string' ? input.tagName : undefined,
+      });
+      if (resolutionResult.resolutions.length === 0) {
+        return successResult({
+          result: {
+            resolutions: [],
+            hint: 'Pass at least one name field (vendorName, customerName, accountName, etc.) to resolve.',
+          },
+        });
+      }
+      return successResult({ result: resolutionResult });
+    }
+
+    if (tool.name === 'COUNT_validate_payload') {
+      const toolName = typeof input.toolName === 'string' ? input.toolName : '';
+      if (!toolName) {
+        return errorResult({ error: new Error('toolName is required.'), toolName: tool.name });
+      }
+      const body =
+        input.body && typeof input.body === 'object' && !Array.isArray(input.body)
+          ? (input.body as Record<string, unknown>)
+          : undefined;
+      const query =
+        input.query && typeof input.query === 'object' && !Array.isArray(input.query)
+          ? (input.query as Record<string, unknown>)
+          : undefined;
+      const validationResult = await mcpPayloadValidationHelper.validateMcpPayloadAsync({
+        toolName,
+        body,
+        query,
+        verifyReferences: input.verifyReferences === true,
+        client,
+      });
+      return successResult({ result: validationResult });
     }
 
     const path = interpolatePath({ pathTemplate: tool.pathTemplate, input });
@@ -122,7 +203,7 @@ async function executeTool(params: ExecuteToolParams): Promise<CallToolResult> {
 
     return successResult({ result: response });
   } catch (error: unknown) {
-    return errorResult({ error });
+    return errorResult({ error, toolName: tool.name });
   }
 }
 
@@ -134,10 +215,6 @@ interface IsReportEndpointParams {
   target: ToolDefinition;
 }
 
-// Mirrors `buildTips` in src/modules/app/mcpServer/tools/registerTools.ts so
-// the standalone server returns the same hint set for COUNT_describe_endpoint
-// that the in-process server returns. Any change to either side should be
-// mirrored to keep the two MCP surfaces consistent.
 function buildTips(params: BuildTipsParams): string[] {
   const { target } = params;
   const tips: string[] = [];
@@ -218,36 +295,39 @@ function successResult(params: SuccessResultParams): CallToolResult {
 }
 
 function errorResult(params: ErrorResultParams): CallToolResult {
-  const { error } = params;
+  const { error, toolName } = params;
   if (error instanceof PartnerApiError) {
+    const errorPayload = mcpRecoveryHintHelper.attachMcpRecoveryHint({
+      errorPayload: {
+        message: error.message,
+        statusCode: error.statusCode,
+        responseBody: error.responseBody,
+      },
+      toolName,
+    });
     return {
       isError: true,
       content: [
         {
           type: 'text',
-          text: JSON.stringify(
-            {
-              message: error.message,
-              statusCode: error.statusCode,
-              responseBody: error.responseBody,
-            },
-            null,
-            2,
-          ),
+          text: JSON.stringify(errorPayload, null, 2),
         },
       ],
     };
   }
 
   const message = error instanceof Error ? error.message : String(error);
+  const errorPayload = mcpRecoveryHintHelper.attachMcpRecoveryHint({
+    errorPayload: { message },
+    toolName,
+  });
   return {
     isError: true,
     content: [
       {
         type: 'text',
-        text: message,
+        text: JSON.stringify(errorPayload, null, 2),
       },
     ],
   };
 }
-

@@ -1,0 +1,313 @@
+import { QueryParams } from '../types.js';
+
+export interface McpReferenceResolutionPartnerClient {
+  request(params: {
+    method: 'GET';
+    path: string;
+    query?: QueryParams;
+    requiresUserAuth?: boolean;
+  }): Promise<unknown>;
+}
+
+export type McpReferenceMatchConfidence = 'exact' | 'fuzzy' | 'ambiguous' | 'not_found';
+
+export interface McpReferenceResolutionCandidate {
+  uuid: string;
+  name: string;
+}
+
+export interface McpReferenceResolutionFieldResult {
+  field: string;
+  searchTerm: string;
+  uuid: string | null;
+  name: string | null;
+  matchConfidence: McpReferenceMatchConfidence;
+  issue?: 'not_found' | 'ambiguous';
+  candidates?: McpReferenceResolutionCandidate[];
+}
+
+interface ResolveMcpReferencesParams {
+  client: McpReferenceResolutionPartnerClient;
+  vendorName?: string;
+  customerName?: string;
+  customerEmail?: string;
+  accountName?: string;
+  accountType?: string;
+  projectName?: string;
+  tagName?: string;
+}
+
+interface ResolveMcpReferencesResult {
+  resolutions: McpReferenceResolutionFieldResult[];
+}
+
+interface ListRecord {
+  uuid: string;
+  name: string;
+}
+
+interface FetchListRecordsParams {
+  client: McpReferenceResolutionPartnerClient;
+  path: string;
+  search: string;
+  extraQuery?: QueryParams;
+  recordsKey: string;
+  nameField: string;
+}
+
+interface ScoreNameMatchParams {
+  searchTerm: string;
+  candidateName: string;
+}
+
+interface ScoreNameMatchResult {
+  score: number;
+  matchConfidence: McpReferenceMatchConfidence;
+}
+
+interface BuildFieldResolutionParams {
+  field: string;
+  searchTerm: string;
+  records: ListRecord[];
+}
+
+const LIST_LIMIT = 25;
+
+export async function resolveMcpReferences(params: ResolveMcpReferencesParams): Promise<ResolveMcpReferencesResult> {
+  const { client } = params;
+  const resolutions: McpReferenceResolutionFieldResult[] = [];
+
+  if (params.vendorName && params.vendorName.trim() !== '') {
+    const vendorRecords = await fetchListRecords({
+      client,
+      path: '/partners/vendors',
+      search: params.vendorName.trim(),
+      recordsKey: 'vendors',
+      nameField: 'name',
+    });
+    resolutions.push(
+      buildFieldResolution({ field: 'vendorName', searchTerm: params.vendorName.trim(), records: vendorRecords })
+    );
+  }
+
+  if (params.customerName && params.customerName.trim() !== '') {
+    const customerRecords = await fetchListRecords({
+      client,
+      path: '/partners/customers',
+      search: params.customerName.trim(),
+      recordsKey: 'customers',
+      nameField: 'customer',
+    });
+    resolutions.push(
+      buildFieldResolution({ field: 'customerName', searchTerm: params.customerName.trim(), records: customerRecords })
+    );
+  }
+
+  if (params.customerEmail && params.customerEmail.trim() !== '') {
+    const customerEmailRecords = await fetchListRecords({
+      client,
+      path: '/partners/customers',
+      search: params.customerEmail.trim(),
+      recordsKey: 'customers',
+      nameField: 'customer',
+    });
+    resolutions.push(
+      buildFieldResolution({
+        field: 'customerEmail',
+        searchTerm: params.customerEmail.trim(),
+        records: customerEmailRecords,
+      })
+    );
+  }
+
+  if (params.accountName && params.accountName.trim() !== '') {
+    const accountQuery: QueryParams = { search: params.accountName.trim(), limit: LIST_LIMIT };
+    if (params.accountType && params.accountType.trim() !== '') {
+      accountQuery.type = params.accountType.trim();
+    }
+    const accountRecords = await fetchListRecords({
+      client,
+      path: '/partners/chart-of-accounts',
+      search: params.accountName.trim(),
+      extraQuery: accountQuery,
+      recordsKey: 'accounts',
+      nameField: 'name',
+    });
+    resolutions.push(
+      buildFieldResolution({ field: 'accountName', searchTerm: params.accountName.trim(), records: accountRecords })
+    );
+  }
+
+  if (params.projectName && params.projectName.trim() !== '') {
+    const projectRecords = await fetchListRecords({
+      client,
+      path: '/partners/projects',
+      search: params.projectName.trim(),
+      recordsKey: 'projects',
+      nameField: 'name',
+    });
+    resolutions.push(
+      buildFieldResolution({ field: 'projectName', searchTerm: params.projectName.trim(), records: projectRecords })
+    );
+  }
+
+  if (params.tagName && params.tagName.trim() !== '') {
+    const tagRecords = await fetchListRecords({
+      client,
+      path: '/partners/tags',
+      search: params.tagName.trim(),
+      recordsKey: 'tags',
+      nameField: 'name',
+    });
+    resolutions.push(
+      buildFieldResolution({ field: 'tagName', searchTerm: params.tagName.trim(), records: tagRecords })
+    );
+  }
+
+  return { resolutions };
+}
+
+async function fetchListRecords(params: FetchListRecordsParams): Promise<ListRecord[]> {
+  const { client, path, search, extraQuery, recordsKey, nameField } = params;
+  const query: QueryParams = {
+    search,
+    limit: LIST_LIMIT,
+    page: 1,
+    ...(extraQuery ?? {}),
+  };
+
+  const response = await client.request({
+    method: 'GET',
+    path,
+    query,
+    requiresUserAuth: true,
+  });
+
+  const rawRecords = extractRecordsArray({ response, recordsKey });
+  const listRecords: ListRecord[] = [];
+
+  for (const rawRecord of rawRecords) {
+    if (!rawRecord || typeof rawRecord !== 'object') continue;
+    const recordObject = rawRecord as Record<string, unknown>;
+    const uuid = extractRecordUuid({ recordObject });
+    const nameValue = recordObject[nameField];
+    if (!uuid || typeof nameValue !== 'string' || nameValue.trim() === '') continue;
+    listRecords.push({ uuid, name: nameValue.trim() });
+  }
+
+  return listRecords;
+}
+
+interface ExtractRecordsArrayParams {
+  response: unknown;
+  recordsKey: string;
+}
+
+function extractRecordsArray(params: ExtractRecordsArrayParams): unknown[] {
+  const { response, recordsKey } = params;
+  if (!response || typeof response !== 'object') return [];
+
+  const responseObject = response as Record<string, unknown>;
+  const directArray = responseObject[recordsKey];
+  if (Array.isArray(directArray)) return directArray;
+
+  const dataObject = responseObject.data;
+  if (dataObject && typeof dataObject === 'object') {
+    const nestedArray = (dataObject as Record<string, unknown>)[recordsKey];
+    if (Array.isArray(nestedArray)) return nestedArray;
+  }
+
+  return [];
+}
+
+interface ExtractRecordUuidParams {
+  recordObject: Record<string, unknown>;
+}
+
+function extractRecordUuid(params: ExtractRecordUuidParams): string | null {
+  const { recordObject } = params;
+  if (typeof recordObject.id === 'string' && recordObject.id.trim() !== '') {
+    return recordObject.id.trim();
+  }
+  if (typeof recordObject.uuid === 'string' && recordObject.uuid.trim() !== '') {
+    return recordObject.uuid.trim();
+  }
+  return null;
+}
+
+export function scoreNameMatch(params: ScoreNameMatchParams): ScoreNameMatchResult {
+  const normalizedSearch = params.searchTerm.trim().toLowerCase();
+  const normalizedCandidate = params.candidateName.trim().toLowerCase();
+
+  if (normalizedSearch === normalizedCandidate) {
+    return { score: 100, matchConfidence: 'exact' };
+  }
+  if (normalizedCandidate.startsWith(normalizedSearch)) {
+    return { score: 80, matchConfidence: 'fuzzy' };
+  }
+  if (normalizedCandidate.includes(normalizedSearch)) {
+    return { score: 60, matchConfidence: 'fuzzy' };
+  }
+  return { score: 0, matchConfidence: 'not_found' };
+}
+
+function buildFieldResolution(params: BuildFieldResolutionParams): McpReferenceResolutionFieldResult {
+  const { field, searchTerm, records } = params;
+
+  if (records.length === 0) {
+    return {
+      field,
+      searchTerm,
+      uuid: null,
+      name: null,
+      matchConfidence: 'not_found',
+      issue: 'not_found',
+    };
+  }
+
+  const scoredRecords = records
+    .map((_record) => ({
+      record: _record,
+      ...scoreNameMatch({ searchTerm, candidateName: _record.name }),
+    }))
+    .filter((_scored) => _scored.score > 0)
+    .sort((_left, _right) => _right.score - _left.score);
+
+  if (scoredRecords.length === 0) {
+    return {
+      field,
+      searchTerm,
+      uuid: null,
+      name: null,
+      matchConfidence: 'not_found',
+      issue: 'not_found',
+    };
+  }
+
+  const topScore = scoredRecords[0].score;
+  const topMatches = scoredRecords.filter((_scored) => _scored.score === topScore);
+
+  if (topMatches.length > 1) {
+    return {
+      field,
+      searchTerm,
+      uuid: null,
+      name: null,
+      matchConfidence: 'ambiguous',
+      issue: 'ambiguous',
+      candidates: topMatches.slice(0, 5).map((_scored) => ({
+        uuid: _scored.record.uuid,
+        name: _scored.record.name,
+      })),
+    };
+  }
+
+  const bestMatch = topMatches[0];
+  return {
+    field,
+    searchTerm,
+    uuid: bestMatch.record.uuid,
+    name: bestMatch.record.name,
+    matchConfidence: bestMatch.matchConfidence,
+  };
+}
