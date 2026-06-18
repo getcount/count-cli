@@ -603,7 +603,7 @@ function classifyUuidReferenceFieldPath(params: ClassifyUuidReferenceFieldPathPa
   if (fieldPath.includes('projectUuid')) {
     return 'project';
   }
-  if (fieldPath.includes('tagUuids')) {
+  if (fieldPath.includes('tagUuid')) {
     return 'tag';
   }
   if (fieldPath.includes('vendorUuid')) {
