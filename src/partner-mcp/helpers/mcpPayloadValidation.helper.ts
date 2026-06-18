@@ -422,7 +422,14 @@ function validateBulkJournalEntryRows(params: ValidateBulkJournalEntryRowsParams
       return;
     }
     journalEntryObject.lines.forEach((_line, lineIndex) => {
-      if (!_line || typeof _line !== 'object') return;
+      if (!_line || typeof _line !== 'object') {
+        issues.push({
+          path: `body.journalEntries[${index}].lines[${lineIndex}]`,
+          code: 'missing_required',
+          message: 'Each journal line must be an object.',
+        });
+        return;
+      }
       const lineObject = _line as Record<string, unknown>;
       if (!hasNonEmptyString(lineObject.accountUuid)) {
         issues.push({
@@ -474,7 +481,14 @@ function validateCreateBillBody(params: ValidateCreateBillBodyParams): void {
   }
 
   body.lineItems.forEach((_lineItem, index) => {
-    if (!_lineItem || typeof _lineItem !== 'object') return;
+    if (!_lineItem || typeof _lineItem !== 'object') {
+      issues.push({
+        path: `body.lineItems[${index}]`,
+        code: 'missing_required',
+        message: 'Each line item must be an object.',
+      });
+      return;
+    }
     const lineItemObject = _lineItem as Record<string, unknown>;
     if (!hasNonEmptyString(lineItemObject.categoryAccountUuid)) {
       issues.push({
