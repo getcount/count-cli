@@ -509,19 +509,194 @@ interface VerifyUuidReferencesExistParams {
   references: Array<{ path: string; uuid: string }>;
 }
 
-/** Best-effort UUID existence check via GET-by-id endpoints. Adds reference_not_found issues. */
+type UuidReferenceVerificationKind = 'customer' | 'project' | 'tag' | 'vendor' | 'account';
+
+interface ClassifyUuidReferenceFieldPathParams {
+  fieldPath: string;
+}
+
+function canonicalizeUuidForPartnerLookup(uuid: string): string {
+  return uuid.trim().toLowerCase();
+}
+
+function classifyUuidReferenceFieldPath(params: ClassifyUuidReferenceFieldPathParams): UuidReferenceVerificationKind | null {
+  const { fieldPath } = params;
+  if (fieldPath.includes('customerUuid')) {
+    return 'customer';
+  }
+  if (fieldPath.includes('projectUuid')) {
+    return 'project';
+  }
+  if (fieldPath.includes('tagUuids')) {
+    return 'tag';
+  }
+  if (fieldPath.includes('vendorUuid')) {
+    return 'vendor';
+  }
+  if (
+    fieldPath.includes('accUuid') ||
+    fieldPath.includes('categoryAccountUuid') ||
+    fieldPath.includes('accountUuid')
+  ) {
+    return 'account';
+  }
+  return null;
+}
+
+interface ExtractPartnerListRecordsParams {
+  response: unknown;
+  recordsKey: string;
+}
+
+function extractPartnerListRecords(params: ExtractPartnerListRecordsParams): unknown[] {
+  const { response, recordsKey } = params;
+  if (!response || typeof response !== 'object') {
+    return [];
+  }
+
+  const responseObject = response as Record<string, unknown>;
+  const directArray = responseObject[recordsKey];
+  if (Array.isArray(directArray)) {
+    return directArray;
+  }
+
+  const dataObject = responseObject.data;
+  if (dataObject && typeof dataObject === 'object') {
+    const nestedArray = (dataObject as Record<string, unknown>)[recordsKey];
+    if (Array.isArray(nestedArray)) {
+      return nestedArray;
+    }
+  }
+
+  return [];
+}
+
+interface LoadPartnerRecordUuidSetParams {
+  client: McpReferenceResolutionPartnerClient;
+  path: string;
+  recordsKey: string;
+  uuidFieldNames: string[];
+}
+
+async function loadPartnerRecordUuidSet(params: LoadPartnerRecordUuidSetParams): Promise<Set<string>> {
+  const { client, path, recordsKey, uuidFieldNames } = params;
+  const response = await client.request({
+    method: 'GET',
+    path,
+    query: { page: 1, limit: 5000 },
+    requiresUserAuth: true,
+  });
+
+  const uuidSet = new Set<string>();
+  for (const rawRecord of extractPartnerListRecords({ response, recordsKey })) {
+    if (!rawRecord || typeof rawRecord !== 'object') {
+      continue;
+    }
+    const recordObject = rawRecord as Record<string, unknown>;
+    for (const uuidFieldName of uuidFieldNames) {
+      const fieldValue = recordObject[uuidFieldName];
+      if (typeof fieldValue === 'string' && fieldValue.trim() !== '') {
+        uuidSet.add(canonicalizeUuidForPartnerLookup(fieldValue));
+      }
+    }
+  }
+
+  return uuidSet;
+}
+
+interface ProbePartnerResourceByUuidParams {
+  client: McpReferenceResolutionPartnerClient;
+  pathTemplate: string;
+  uuid: string;
+}
+
+async function probePartnerResourceByUuid(params: ProbePartnerResourceByUuidParams): Promise<boolean> {
+  const { client, pathTemplate, uuid } = params;
+  try {
+    await client.request({
+      method: 'GET',
+      path: pathTemplate.replace('{uuid}', encodeURIComponent(uuid)),
+      requiresUserAuth: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Path-aware UUID existence checks using partner routes that actually exist. */
 export async function verifyUuidReferencesExist(
   params: VerifyUuidReferencesExistParams
 ): Promise<McpPayloadValidationIssue[]> {
   const { client, references } = params;
   const issues: McpPayloadValidationIssue[] = [];
-  const seenUuids = new Set<string>();
+  const seenReferenceKeys = new Set<string>();
+
+  const needsVendorList = references.some(
+    (_reference) => classifyUuidReferenceFieldPath({ fieldPath: _reference.path }) === 'vendor'
+  );
+  const needsAccountList = references.some(
+    (_reference) => classifyUuidReferenceFieldPath({ fieldPath: _reference.path }) === 'account'
+  );
+
+  const [vendorUuidSet, accountUuidSet] = await Promise.all([
+    needsVendorList
+      ? loadPartnerRecordUuidSet({
+          client,
+          path: '/partners/vendors',
+          recordsKey: 'vendors',
+          uuidFieldNames: ['id', 'uuid'],
+        })
+      : Promise.resolve(new Set<string>()),
+    needsAccountList
+      ? loadPartnerRecordUuidSet({
+          client,
+          path: '/partners/chart-of-accounts',
+          recordsKey: 'accounts',
+          uuidFieldNames: ['id', 'uuid', 'accUuid', 'accountUuid'],
+        })
+      : Promise.resolve(new Set<string>()),
+  ]);
 
   for (const reference of references) {
-    if (seenUuids.has(reference.uuid)) continue;
-    seenUuids.add(reference.uuid);
+    const referenceKey = `${reference.path}:${reference.uuid}`;
+    if (seenReferenceKeys.has(referenceKey)) {
+      continue;
+    }
+    seenReferenceKeys.add(referenceKey);
 
-    const exists = await checkUuidExistsViaPartnerApi({ client, uuid: reference.uuid });
+    const verificationKind = classifyUuidReferenceFieldPath({ fieldPath: reference.path });
+    if (!verificationKind) {
+      continue;
+    }
+
+    const canonicalUuid = canonicalizeUuidForPartnerLookup(reference.uuid);
+    let exists = false;
+
+    if (verificationKind === 'customer') {
+      exists = await probePartnerResourceByUuid({
+        client,
+        pathTemplate: '/partners/customers/{uuid}',
+        uuid: reference.uuid,
+      });
+    } else if (verificationKind === 'project') {
+      exists = await probePartnerResourceByUuid({
+        client,
+        pathTemplate: '/partners/projects/{uuid}',
+        uuid: reference.uuid,
+      });
+    } else if (verificationKind === 'tag') {
+      exists = await probePartnerResourceByUuid({
+        client,
+        pathTemplate: '/partners/tags/{uuid}',
+        uuid: reference.uuid,
+      });
+    } else if (verificationKind === 'vendor') {
+      exists = vendorUuidSet.has(canonicalUuid);
+    } else if (verificationKind === 'account') {
+      exists = accountUuidSet.has(canonicalUuid);
+    }
+
     if (!exists) {
       issues.push({
         path: reference.path,
@@ -532,33 +707,6 @@ export async function verifyUuidReferencesExist(
   }
 
   return issues;
-}
-
-interface CheckUuidExistsViaPartnerApiParams {
-  client: McpReferenceResolutionPartnerClient;
-  uuid: string;
-}
-
-async function checkUuidExistsViaPartnerApi(params: CheckUuidExistsViaPartnerApiParams): Promise<boolean> {
-  const { client, uuid } = params;
-  const probePaths = [
-    `/partners/vendors/${encodeURIComponent(uuid)}`,
-    `/partners/customers/${encodeURIComponent(uuid)}`,
-    `/partners/chart-of-accounts/${encodeURIComponent(uuid)}`,
-    `/partners/projects/${encodeURIComponent(uuid)}`,
-    `/partners/tags/${encodeURIComponent(uuid)}`,
-  ];
-
-  for (const probePath of probePaths) {
-    try {
-      await client.request({ method: 'GET', path: probePath, requiresUserAuth: true });
-      return true;
-    } catch {
-      continue;
-    }
-  }
-
-  return false;
 }
 
 export async function validateMcpPayloadAsync(params: ValidateMcpPayloadParams): Promise<ValidateMcpPayloadResult> {
