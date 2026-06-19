@@ -1,6 +1,6 @@
-import { getToolDefinition } from '../tools/definitions';
-import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper';
-import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper';
+import { getToolDefinition } from '../tools/definitions.js';
+import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper.js';
+import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper.js';
 
 /** Keep in sync with `MAX_PARTNER_BULK_BATCH_SIZE` in `src/app/helpers/partnerBulk.helper.ts`. */
 const MAX_PARTNER_BULK_BATCH_SIZE = 100;
