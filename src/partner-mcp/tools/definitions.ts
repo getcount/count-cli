@@ -6,7 +6,11 @@ import {
   idBodyInputSchema,
   idInputSchema,
   idOptionalBodyInputSchema,
+  knowledgeInputSchema,
+  playbooksInputSchema,
   queryInputSchema,
+  resolveReferencesInputSchema,
+  validatePayloadInputSchema,
 } from './schemas.js';
 
 const tools: ToolDefinition[] = [
@@ -29,6 +33,54 @@ const tools: ToolDefinition[] = [
     method: 'GET',
     pathTemplate: '/__local/describe-endpoint',
     inputSchema: describeEndpointInputSchema,
+    requiresUserAuth: false,
+    readOnly: true,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_knowledge',
+    title: 'COUNT Knowledge',
+    description:
+      'COUNT connector and workflow FAQ — call this for “how do I…?” questions before guessing. Covers: authorizing additional workspaces (disconnect + reconnect), Claude/ChatGPT reconnect steps, multiple workspace usage, why auth_status may show fewer workspaces than the COUNT web app, external UUID conventions, P&L category filters (e.g. shipping/Freight & Courier), and bulk import batch sizes. Optional input: `topic` (FAQ id) or `search` (free text). Omit both to list all topics with summaries.',
+    method: 'GET',
+    pathTemplate: '/__local/knowledge',
+    inputSchema: knowledgeInputSchema,
+    requiresUserAuth: false,
+    readOnly: true,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_playbooks',
+    title: 'COUNT Playbooks',
+    description:
+      'End-to-end accounting workflows with ordered steps and tool names. Call before multi-step tasks such as paying a vendor bill, bulk migration imports, or month-end review. Optional input: `playbook` (id) or `search` (free text). Omit both to list all playbooks with summaries. Playbook ids: pay_vendor_bill, migration_import, month_end_review.',
+    method: 'GET',
+    pathTemplate: '/__local/playbooks',
+    inputSchema: playbooksInputSchema,
+    requiresUserAuth: false,
+    readOnly: true,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_resolve_references',
+    title: 'Resolve Name References',
+    description:
+      'Resolve human-readable vendor, customer, account, project, or tag names to external COUNT UUIDs for this workspace. Pass one or more name fields; each returns uuid, matchConfidence (exact/fuzzy/ambiguous/not_found), and candidates when ambiguous. Use before bulk imports instead of guessing UUIDs from large list results.',
+    method: 'GET',
+    pathTemplate: '/__local/resolve-references',
+    inputSchema: resolveReferencesInputSchema,
+    requiresUserAuth: false,
+    readOnly: true,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_validate_payload',
+    title: 'Validate Payload',
+    description:
+      'Preflight validation for mutation tool payloads — no data is written. Checks bulk batch size (cap 100), legacy numeric field rejection, and required fields for bulk create and create_bill. Set verifyReferences: true to confirm UUIDs exist in the workspace. Call before COUNT_bulk_create_* imports.',
+    method: 'GET',
+    pathTemplate: '/__local/validate-payload',
+    inputSchema: validatePayloadInputSchema,
     requiresUserAuth: false,
     readOnly: true,
     destructive: false,
@@ -86,7 +138,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_bulk_create_transactions',
     title: 'Bulk Create Transactions',
     description:
-      'Create up to 100 register/bank transactions in a single call. Body: `{ "transactions": [<row>, ...] }` where each `<row>` uses the EXACT same shape as `COUNT_create_transaction` (required `accUuid`, `amount`, `postedDate`/`date`; optional `description`, `currency`, `type`, `categoryAccountUuid`, `vendorUuid`, `customerUuid`, `projectUuid`, `tagUuids: string[]`, `taxes: number[]`, `notes`, `authorizedDate`). **Set the category, vendor/customer, project, tags, and taxes ON EACH ROW in this single call — no follow-up `change_transaction_category` needed.** **Partial-success contract**: each row runs in its own DB transaction; one row failing never rolls back another row\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "transaction": {...} } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the rows where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all rows failed. **Cap**: 100 rows per call (split larger imports into multiple calls). **Use cases**: ingest a CSV of bank transactions, replay a missed sync window, backfill historical activity. For a single transaction, prefer `COUNT_create_transaction` — the response shape is simpler.',
+      'Create up to 100 register/bank transactions in a single call. Body: `{ "transactions": [<row>, ...] }` where each `<row>` uses the EXACT same shape as `COUNT_create_transaction` (required `accUuid`, `amount`, `postedDate`/`date`; optional `description`, `currency`, `type`, `categoryAccountUuid`, `vendorUuid`, `customerUuid`, `projectUuid`, `tagUuids: string[]`, `taxes: number[]`, `notes`, `authorizedDate`). **Set the category, vendor/customer, project, tags, and taxes ON EACH ROW in this single call — no follow-up `change_transaction_category` needed.** **Partial-success contract**: each row runs in its own DB transaction; one row failing never rolls back another row\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "transaction": {...} } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the rows where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all rows failed. **Cap**: 100 rows per call (split larger imports into multiple calls). **Recommended batch size**: ~25 rows for large historical imports (e.g. billing-system backfills); larger batches increase timeout risk. **Use cases**: ingest a CSV of bank transactions, replay a missed sync window, backfill historical activity. For a single transaction, prefer `COUNT_create_transaction` — the response shape is simpler.',
     method: 'POST',
     pathTemplate: '/partners/transactions/bulk',
     inputSchema: bodyInputSchema,
@@ -257,7 +309,8 @@ const tools: ToolDefinition[] = [
   {
     name: 'COUNT_create_customer',
     title: 'Create Customer',
-    description: 'Create a customer.',
+    description:
+      'Create a customer. Required body: `customer` (business or person name). Optional body: `email`, `mainPhone`, `website`, `notes`, `status` (`active` | `inactive`), `paymentTerm`, `taxNumber`, `taxAutoCalculate`, `taxExcluded`, `taxes` (numeric tax ids), `billingAddress`, `shippingAddress`, `contacts: [{ firstName?, lastName?, email?, phone?, isPrimary? }]`. Returns 201 with the created customer; `id` in the response is the external UUID.',
     method: 'POST',
     pathTemplate: '/partners/customers',
     inputSchema: bodyInputSchema,
@@ -272,6 +325,30 @@ const tools: ToolDefinition[] = [
     method: 'PUT',
     pathTemplate: '/partners/customers/{id}',
     inputSchema: idBodyInputSchema,
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_bulk_create_customers',
+    title: 'Bulk Create Customers',
+    description:
+      'Create up to 100 customers in a single call. Body: `{ "customers": [<row>, ...] }` where each `<row>` uses the EXACT same shape as `COUNT_create_customer` (required `customer`; optional `email`, `mainPhone`, `website`, `notes`, `status`, `paymentTerm`, `taxNumber`, `taxAutoCalculate`, `taxExcluded`, `taxes`, `billingAddress`, `shippingAddress`, `contacts`). **Partial-success contract**: each row runs in its own DB transaction; one row failing never rolls back another row\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "customer": {...} } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the rows where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all rows failed. **Cap**: 100 rows per call. **Recommended batch size**: ~25 rows for large migrations (e.g. importing customers from an external billing system).',
+    method: 'POST',
+    pathTemplate: '/partners/customers/bulk',
+    inputSchema: bodyInputSchema,
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_bulk_update_customers',
+    title: 'Bulk Update Customers',
+    description:
+      'Update up to 100 customers in a single call. Body: `{ "customers": [{ "uuid": "<external COUNT customer id>", ...fields }] }` where each row must include `uuid` plus the fields to patch (same writable fields as `COUNT_update_customer`, e.g. `email`, `mainPhone`, `website`, `notes`, `status`, `paymentTerm`, `billingAddress`, `shippingAddress`, `contacts`). **Partial-success contract**: each row is updated independently; one row failing never rolls back another row\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "customer": {...} } | { "index": 1, "success": false, "error": "..." }, ...] }`. The HTTP status is always `201` when the batch was accepted. **Recommended batch size**: ~25 rows for backfilling email/phone on migrated customers.',
+    method: 'PATCH',
+    pathTemplate: '/partners/customers/bulk',
+    inputSchema: bodyInputSchema,
     requiresUserAuth: true,
     readOnly: false,
     destructive: false,
@@ -723,7 +800,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_list_bills',
     title: 'List Bills',
     description:
-      'List vendor bills for the authenticated workspace. Common `query` filters: `page`, `limit` (default 50), `orderBy`, `orderDirection`, `projectUuids` (comma-separated project UUIDs — the partner middleware resolves these into the internal `projects` filter; do NOT pass `projects` directly, it is stripped server-side), `vendors` (comma-separated numeric vendor ids — UUID resolution is not yet wired for this filter), `approvalStatus`, `status` (comma-separated combination of approval + payment status tokens, e.g. `"draft,approved,paid"`), `billType` (`"bill"` | `"vendor_memo"`), `currency`, `search` (substring against bill number / vendor name), `startDate` / `endDate` (bill-date window, YYYY-MM-DD), `startDueDate` / `endDueDate` (due-date window), `amount` + `amountOperator` (e.g. `amount=100&amountOperator=gte`). Returns bill rows with `id` exposed as the external UUID — pass that UUID back to `get_bill` / `update_bill` / `approve_bill` / `delete_bill`.',
+      'List vendor bills for the authenticated workspace. Common `query` filters: `page`, `limit` (default 50), `orderBy`, `orderDirection`, `projectUuids` (comma-separated project UUIDs), `vendorUuids` (comma-separated vendor UUIDs from `list_vendors` — do NOT pass numeric `vendors`), `approvalStatus`, `status` (comma-separated combination of approval + payment status tokens, e.g. `"draft,approved,paid"`), `billType` (`"bill"` | `"vendor_memo"`), `currency`, `search` (substring against bill number / vendor name), `startDate` / `endDate` (bill-date window, YYYY-MM-DD), `startDueDate` / `endDueDate` (due-date window), `amount` + `amountOperator` (e.g. `amount=100&amountOperator=gte`). Returns bill rows with `id` exposed as the external UUID — pass that UUID back to `get_bill` / `update_bill` / `approve_bill` / `delete_bill`.',
     method: 'GET',
     pathTemplate: '/partners/bills',
     inputSchema: queryInputSchema,
@@ -747,7 +824,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_create_bill',
     title: 'Create Bill',
     description:
-      'Create a vendor bill (accounts payable). Required body: `vendorId` (numeric vendor id from `list_vendors`), `date` (YYYY-MM-DD), `dueDate` (YYYY-MM-DD), and `lineItems: [{ categoryAccountId, description?, quantity, price, total?, taxes?, projectUuid?, customerUuid? }]` where `categoryAccountId` is the bill expense/category account id. Optional body: `billNumber`, `purchaseOrderNumber`, `notes`, `currency` (defaults to workspace currency), `attachments: [{ url, title? }]`, `tags: number[]` (numeric tag ids — partner UUID resolution is NOT yet wired for bills). The created bill enters the `draft` state; call `approve_bill` to post journals and make it eligible for payment. Returns 201 with the bill, or a `{ statusCode, message }` error envelope on validation failure.',
+      'Create a vendor bill (accounts payable). Required body: `vendorUuid` (vendor UUID from `list_vendors`), `date` (YYYY-MM-DD), `dueDate` (YYYY-MM-DD), and `lineItems: [{ categoryAccountUuid, description?, quantity, price, total?, taxes?, projectUuid?, customerUuid? }]` where `categoryAccountUuid` is the expense/category account UUID from `list_accounts`. Optional body: `billNumber`, `purchaseOrderNumber`, `notes`, `currency` (defaults to workspace currency), `attachments: [{ url, title? }]`, `tagUuids: string[]`, `projectUuid`. Do NOT send numeric `vendorId`, `categoryAccountId`, or `tags` — use UUID fields only. The created bill enters the `draft` state; call `approve_bill` to post journals and make it eligible for payment. Returns 201 with the bill, or a `{ statusCode, message }` error envelope on validation failure.',
     method: 'POST',
     pathTemplate: '/partners/bills',
     inputSchema: bodyInputSchema,
@@ -759,7 +836,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_update_bill',
     title: 'Update Bill',
     description:
-      'Update a bill by external UUID. Pass only the fields you want to change. Editable: `vendorId`, `date`, `dueDate`, `billNumber`, `purchaseOrderNumber`, `notes`, `currency`, `lineItems` (replaces all lines when provided; use `categoryAccountId`, `quantity`, and `price` on each line), `tags`, `attachments`. Approved/paid bills have a more restrictive editable set — expect 400 on date/line changes after approval; use `delete_bill` + recreate if you need a structural change post-approval.',
+      'Update a bill by external UUID. Pass only the fields you want to change. Editable: `vendorUuid`, `date`, `dueDate`, `billNumber`, `purchaseOrderNumber`, `notes`, `currency`, `lineItems` (replaces all lines when provided; each line uses `categoryAccountUuid`, `quantity`, `price`, optional `projectUuid`, `customerUuid`), `tagUuids`, `projectUuid`, `attachments`. Do NOT send numeric `vendorId`, `categoryAccountId`, or `tags`. Approved/paid bills have a more restrictive editable set — expect 400 on date/line changes after approval; use `delete_bill` + recreate if you need a structural change post-approval.',
     method: 'PATCH',
     pathTemplate: '/partners/bills/{id}',
     inputSchema: idBodyInputSchema,
@@ -842,7 +919,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_bulk_create_journal_entries',
     title: 'Bulk Create Journal Entries',
     description:
-      'Create up to 100 manual journal entry postings in a single call. Body: `{ "journalEntries": [<posting>, ...] }` where each `<posting>` uses the EXACT same shape as `COUNT_create_journal_entry` (required `descriptionEntry`, `date`, `lines`; each line needs `accountUuid` + exactly one of `amountDebit` / `amountCredit`; optional per-line `descriptionLine`; optional top-level `refNumber`, `withCaution`). **Partial-success contract**: each posting runs in its own DB transaction; one bad posting never rolls back another posting\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "journalEntry": [...lines] } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the postings where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all postings failed. **Cap**: 100 postings per call (split larger imports into multiple calls). **Performance note**: account UUIDs are resolved in a SINGLE batched lookup across the whole batch, so a 100-posting × 10-line request issues one account query — bulk is strictly cheaper than calling `COUNT_create_journal_entry` 100 times. **Use cases**: replay manual postings from another GL, backfill accruals, ingest a CSV of journal entries. For a single posting, prefer `COUNT_create_journal_entry` — the response shape is simpler.',
+      'Create up to 100 manual journal entry postings in a single call. Body: `{ "journalEntries": [<posting>, ...] }` where each `<posting>` uses the EXACT same shape as `COUNT_create_journal_entry` (required `descriptionEntry`, `date`, `lines`; each line needs `accountUuid` + exactly one of `amountDebit` / `amountCredit`; optional per-line `descriptionLine`; optional top-level `refNumber`, `withCaution`). **Partial-success contract**: each posting runs in its own DB transaction; one bad posting never rolls back another posting\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "journalEntry": [...lines] } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the postings where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all postings failed. **Cap**: 100 postings per call (split larger imports into multiple calls). **Recommended batch size**: ~25 postings for large historical imports; larger batches increase timeout risk. **Performance note**: account UUIDs are resolved in a SINGLE batched lookup across the whole batch, so a 100-posting × 10-line request issues one account query — bulk is strictly cheaper than calling `COUNT_create_journal_entry` 100 times. **Use cases**: replay manual postings from another GL, backfill accruals, ingest a CSV of journal entries. For a single posting, prefer `COUNT_create_journal_entry` — the response shape is simpler.',
     method: 'POST',
     pathTemplate: '/partners/journal-entries/bulk',
     inputSchema: bodyInputSchema,
@@ -1160,7 +1237,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_generate_trial_balance',
     title: 'Generate Trial Balance',
     description:
-      'Generate a trial balance for the authenticated workspace. Put filters under `query`: `endDate` (required, YYYY-MM-DD — the as-of date), `startDate` (optional, defaults to fiscal-year start), `currency` (defaults to workspace currency), `transactionStatus` ("all" | "reviewed" | "unreviewed" | "reconciled" | "unreconciled"), `accounts` (comma-separated numeric account ids to restrict to), `tags` (comma-separated tag ids), `noTags: "true"` (only entries with no tags), `accountType` (one of "Assets", "Liabilities", "Equity", "Income", "Expenses"). This MCP tool is read-only; no `body` is accepted.',
+      'Generate a trial balance for the authenticated workspace. Put filters under `query`: `endDate` (required, YYYY-MM-DD — the as-of date), `startDate` (optional, defaults to fiscal-year start), `currency` (defaults to workspace currency), `transactionStatus` ("all" | "reviewed" | "unreviewed" | "reconciled" | "unreconciled"), `accounts` or `accountUuids` (comma-separated account UUIDs from `list_accounts` — do NOT pass internal numeric ids), `tags` or `tagUuids` (comma-separated tag UUIDs from `list_tags`), `noTags: "true"` (only entries with no tags), `accountType` (one of "Assets", "Liabilities", "Equity", "Income", "Expenses"). This MCP tool is read-only; no `body` is accepted.',
     method: 'POST',
     pathTemplate: '/partners/reports/trial-balance',
     inputSchema: queryInputSchema,
@@ -1172,7 +1249,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_generate_profit_and_loss',
     title: 'Generate Profit And Loss',
     description:
-      'Generate a P&L (income statement) for the authenticated workspace. Put filters under `query`: required `startDate` and `endDate` (YYYY-MM-DD); optional `currency`, `transactionStatus` ("all" | "reviewed" | "unreviewed" | "reconciled" | "unreconciled"), `tags`, `customers`, `vendors`, `projects`, `projectId`, `categoryAccount`, `isPnLByTag: true` (column-per-tag breakdown), `includeNoTag: true`, `reportYear` ("financial" | "calendar"). This MCP tool is read-only; no `body` is accepted. **Sign convention**: revenue rows are returned as positive amounts and expense rows as negative; net profit is the algebraic sum.',
+      'Generate a P&L (income statement) for the authenticated workspace. Put filters under `query`: required `startDate` and `endDate` (YYYY-MM-DD); optional `currency`, `transactionStatus` ("all" | "reviewed" | "unreviewed" | "reconciled" | "unreconciled"), `categoryAccount`, `categoryAccountUuid`, or `categoryAccountUuids` (comma-separated account UUIDs from `list_accounts` — use this to filter to one or more income/expense categories such as "Freight & Courier"; do NOT pass internal numeric ids), `tags` or `tagUuids`, `customers` or `customerUuids`, `vendors` or `vendorUuids`, `projects` or `projectUuids`, `products` or `productUuids`, `isPnLByTag: true` (column-per-tag breakdown), `includeNoTag: true`, `reportYear` ("financial" | "calendar"). This MCP tool is read-only; no `body` is accepted. **Sign convention**: revenue rows are returned as positive amounts and expense rows as negative; net profit is the algebraic sum.',
     method: 'POST',
     pathTemplate: '/partners/reports/pnl',
     inputSchema: queryInputSchema,
@@ -1184,7 +1261,7 @@ const tools: ToolDefinition[] = [
     name: 'COUNT_generate_balance_sheet',
     title: 'Generate Balance Sheet',
     description:
-      'Generate a balance sheet for the authenticated workspace. Put filters under `query`: required `endDate` (YYYY-MM-DD — the as-of date); optional `startDate` (used as the prior-period comparison anchor), `currency`, `transactionStatus`, `accounts`, `tags`. This MCP tool is read-only; no `body` is accepted. Returns Assets / Liabilities / Equity sections with subtotals; the report fails to balance only when there are unposted manual entries — those are surfaced in the response payload.',
+      'Generate a balance sheet for the authenticated workspace. Put filters under `query`: required `endDate` (YYYY-MM-DD — the as-of date); optional `startDate` (used as the prior-period comparison anchor), `currency`, `transactionStatus`, `accounts` or `accountUuids` (comma-separated account UUIDs from `list_accounts` — do NOT pass internal numeric ids), `tags` or `tagUuids`. This MCP tool is read-only; no `body` is accepted. Returns Assets / Liabilities / Equity sections with subtotals; the report fails to balance only when there are unposted manual entries — those are surfaced in the response payload.',
     method: 'POST',
     pathTemplate: '/partners/reports/balance-sheet',
     inputSchema: queryInputSchema,
