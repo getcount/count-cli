@@ -1,14 +1,11 @@
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import {
-  DEFAULT_API_BASE_URL,
-  DEFAULT_CONFIG_DIRECTORY_NAME,
-  DEFAULT_CONFIG_FILE_NAME,
-  DEFAULT_REQUEST_TIMEOUT_MS,
-} from '../constants.js';
+import { DEFAULT_API_BASE_URL, DEFAULT_REQUEST_TIMEOUT_MS } from '../constants.js';
 import type { CountCliCredentials } from '../types.js';
+import { resolveCredentialsFilePath } from './profileStore.service.js';
+
+export { getConfigDirectoryPath } from './profileStore.service.js';
 
 const credentialsSchema = z.object({
   apiBaseUrl: z.string().trim().min(1),
@@ -23,23 +20,29 @@ const credentialsSchema = z.object({
 
 interface GetConfigFilePathParams {
   homeDirectory?: string;
-}
-
-export function getConfigDirectoryPath(params: GetConfigFilePathParams = {}): string {
-  const { homeDirectory = os.homedir() } = params;
-  return path.join(homeDirectory, DEFAULT_CONFIG_DIRECTORY_NAME);
+  profileName?: string;
 }
 
 export function getConfigFilePath(params: GetConfigFilePathParams = {}): string {
-  return path.join(getConfigDirectoryPath(params), DEFAULT_CONFIG_FILE_NAME);
+  return resolveCredentialsFilePath({
+    profileName: params.profileName,
+    homeDirectory: params.homeDirectory,
+  });
 }
 
 interface LoadCredentialsParams {
   configFilePath?: string;
+  profileName?: string;
+  homeDirectory?: string;
 }
 
 export async function loadCredentials(params: LoadCredentialsParams = {}): Promise<CountCliCredentials | null> {
-  const configFilePath = params.configFilePath ?? getConfigFilePath();
+  const configFilePath =
+    params.configFilePath ??
+    resolveCredentialsFilePath({
+      profileName: params.profileName,
+      homeDirectory: params.homeDirectory,
+    });
 
   try {
     const rawContents = await fs.readFile(configFilePath, 'utf8');
@@ -57,10 +60,17 @@ export async function loadCredentials(params: LoadCredentialsParams = {}): Promi
 interface SaveCredentialsParams {
   credentials: CountCliCredentials;
   configFilePath?: string;
+  profileName?: string;
+  homeDirectory?: string;
 }
 
 export async function saveCredentials(params: SaveCredentialsParams): Promise<void> {
-  const configFilePath = params.configFilePath ?? getConfigFilePath();
+  const configFilePath =
+    params.configFilePath ??
+    resolveCredentialsFilePath({
+      profileName: params.profileName,
+      homeDirectory: params.homeDirectory,
+    });
   const configDirectoryPath = path.dirname(configFilePath);
   const validatedCredentials = credentialsSchema.parse(params.credentials);
 
@@ -73,10 +83,17 @@ export async function saveCredentials(params: SaveCredentialsParams): Promise<vo
 
 interface DeleteCredentialsParams {
   configFilePath?: string;
+  profileName?: string;
+  homeDirectory?: string;
 }
 
 export async function deleteCredentials(params: DeleteCredentialsParams = {}): Promise<void> {
-  const configFilePath = params.configFilePath ?? getConfigFilePath();
+  const configFilePath =
+    params.configFilePath ??
+    resolveCredentialsFilePath({
+      profileName: params.profileName,
+      homeDirectory: params.homeDirectory,
+    });
 
   try {
     await fs.unlink(configFilePath);

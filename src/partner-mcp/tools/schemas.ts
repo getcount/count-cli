@@ -49,6 +49,19 @@ export const idOptionalBodyInputSchema = z.object({
   query: querySchema.optional(),
 });
 
+export const idVersionNumberInputSchema = z.object({
+  id: z.string().min(1).describe('External COUNT budget UUID.'),
+  versionNumber: z.union([z.string(), z.number()]).describe('Budget version number (integer, starting at 1).'),
+  query: querySchema.optional(),
+});
+
+export const idVersionNumberBodyInputSchema = z.object({
+  id: z.string().min(1).describe('External COUNT budget UUID.'),
+  versionNumber: z.union([z.string(), z.number()]).describe('Budget version number (integer, starting at 1).'),
+  body: jsonBodySchema,
+  query: querySchema.optional(),
+});
+
 export const describeEndpointInputSchema = z.object({
   toolName: z
     .string()

@@ -13,12 +13,14 @@ import {
   loadCredentials,
   saveCredentials,
 } from '../services/credentialStore.service.js';
+import { ensureProfileDirectory, setActiveProfileName } from '../services/profileStore.service.js';
 
 interface RunInitCommandParams {
   clientId: string;
   clientSecret: string;
   apiBaseUrl?: string;
   configFilePath?: string;
+  profileName?: string;
 }
 
 function normalizeApiBaseUrl(apiBaseUrl: string): string {
@@ -26,7 +28,13 @@ function normalizeApiBaseUrl(apiBaseUrl: string): string {
 }
 
 export async function runInitCommand(params: RunInitCommandParams): Promise<void> {
-  const configFilePath = params.configFilePath ?? getConfigFilePath();
+  if (params.profileName) {
+    await ensureProfileDirectory({ profileName: params.profileName });
+    await setActiveProfileName({ profileName: params.profileName });
+  }
+
+  const configFilePath =
+    params.configFilePath ?? getConfigFilePath({ profileName: params.profileName });
   const existingCredentials = await loadCredentials({ configFilePath });
   const resolvedApiBaseUrl = normalizeApiBaseUrl(
     params.apiBaseUrl ?? existingCredentials?.apiBaseUrl ?? DEFAULT_API_BASE_URL,

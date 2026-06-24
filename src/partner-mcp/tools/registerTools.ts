@@ -9,6 +9,7 @@ import * as mcpPlaybooksHelper from '../helpers/mcpPlaybooks.helper.js';
 import * as mcpRecoveryHintHelper from '../helpers/mcpRecoveryHint.helper.js';
 import * as mcpReferenceResolutionHelper from '../helpers/mcpReferenceResolution.helper.js';
 import * as mcpPayloadValidationHelper from '../helpers/mcpPayloadValidation.helper.js';
+import * as partnerErrorSanitizationHelper from '../helpers/partnerErrorSanitization.helper.js';
 
 interface RegisterToolsParams {
   server: McpServer;
@@ -247,16 +248,18 @@ function checkIsReportEndpoint(params: IsReportEndpointParams): boolean {
 
 function interpolatePath(params: InterpolatePathParams): string {
   const { pathTemplate, input } = params;
-  if (!pathTemplate.includes('{id}')) {
-    return pathTemplate;
-  }
 
-  const id = input.id;
-  if (typeof id !== 'string' || id.trim() === '') {
-    throw new Error('This tool requires a non-empty id.');
-  }
-
-  return pathTemplate.replace('{id}', encodeURIComponent(id));
+  return pathTemplate.replace(/\{(\w+)\}/g, (_match, paramName: string) => {
+    const value = input[paramName];
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      throw new Error(`This tool requires a non-empty ${paramName}.`);
+    }
+    const stringValue = String(value).trim();
+    if (stringValue === '') {
+      throw new Error(`This tool requires a non-empty ${paramName}.`);
+    }
+    return encodeURIComponent(stringValue);
+  });
 }
 
 function getQuery(params: GetQueryParams): QueryParams | undefined {
@@ -298,11 +301,13 @@ function errorResult(params: ErrorResultParams): CallToolResult {
   const { error, toolName } = params;
   if (error instanceof PartnerApiError) {
     const errorPayload = mcpRecoveryHintHelper.attachMcpRecoveryHint({
-      errorPayload: {
-        message: error.message,
-        statusCode: error.statusCode,
-        responseBody: error.responseBody,
-      },
+      errorPayload: partnerErrorSanitizationHelper.sanitizeMcpToolErrorPayload({
+        errorPayload: {
+          message: error.message,
+          statusCode: error.statusCode,
+          responseBody: error.responseBody,
+        },
+      }),
       toolName,
     });
     return {
@@ -318,7 +323,9 @@ function errorResult(params: ErrorResultParams): CallToolResult {
 
   const message = error instanceof Error ? error.message : String(error);
   const errorPayload = mcpRecoveryHintHelper.attachMcpRecoveryHint({
-    errorPayload: { message },
+    errorPayload: partnerErrorSanitizationHelper.sanitizeMcpToolErrorPayload({
+      errorPayload: { message },
+    }),
     toolName,
   });
   return {

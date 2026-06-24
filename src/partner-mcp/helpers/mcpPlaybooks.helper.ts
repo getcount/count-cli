@@ -114,6 +114,56 @@ export const MCP_PLAYBOOKS: McpPlaybook[] = [
     ],
   },
   {
+    id: 'budget_import',
+    title: 'Export, edit, and re-import a P&L budget (Excel round-trip)',
+    summary:
+      'Export the budget grid as JSON, edit amounts offline, then bulk-import cell updates in ~25-row batches on a draft version.',
+    relatedPlaybookIds: ['month_end_review'],
+    relatedKnowledgeTopicIds: ['bulk_operations', 'external_uuids'],
+    keywords: ['budget', 'import', 'export', 'excel', 'spreadsheet', 'forecast', 'planning'],
+    steps: [
+      {
+        stepNumber: 1,
+        instruction: 'List budgets or create a new draft budget for the planning period.',
+        toolName: 'COUNT_list_budgets',
+        inputGuidance: 'Optional query.status: draft. Or COUNT_create_budget with name, startPeriod, cadence, actualPeriods, budgetPeriods.',
+      },
+      {
+        stepNumber: 2,
+        instruction: 'Export the budget grid with account UUIDs and period columns.',
+        toolName: 'COUNT_get_budget_grid',
+        inputGuidance:
+          'id: budget UUID. query: { includeActuals: "false", versionNumber: <draft version> } for faster budget-only export.',
+      },
+      {
+        stepNumber: 3,
+        instruction: 'Resolve account names to UUIDs when building import rows from a spreadsheet.',
+        toolName: 'COUNT_resolve_references',
+        inputGuidance: 'Pass accountName + accountType (Income or Expenses). Copy returned UUIDs into update rows.',
+      },
+      {
+        stepNumber: 4,
+        instruction: 'Preflight each import batch before writing cells.',
+        toolName: 'COUNT_validate_payload',
+        inputGuidance:
+          'toolName: COUNT_bulk_update_budget_cells. body: { updates: [{ accountUuid, periodStart, amount }] }.',
+      },
+      {
+        stepNumber: 5,
+        instruction: 'Import edited amounts in batches (~25 rows; cap 100). Retry only failed indices.',
+        toolName: 'COUNT_bulk_update_budget_cells',
+        inputGuidance:
+          'id + versionNumber + body.updates[]. Use periodStart values from get_budget_grid columns. Read errorCount first.',
+      },
+      {
+        stepNumber: 6,
+        instruction: 'Publish the budget when amounts are final.',
+        toolName: 'COUNT_publish_budget',
+        inputGuidance: 'id: budget UUID. Optional body.versionNumber for the draft version to publish.',
+      },
+    ],
+  },
+  {
     id: 'month_end_review',
     title: 'Month-end workspace health review',
     summary:
