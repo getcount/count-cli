@@ -4,10 +4,11 @@ import { getConfigFilePath, loadCredentials, saveCredentials } from '../services
 interface RunLoginCommandParams {
   callbackPort?: number;
   openBrowserAutomatically?: boolean;
+  profileName?: string;
 }
 
 export async function runLoginCommand(params: RunLoginCommandParams = {}): Promise<void> {
-  const credentials = await loadCredentials();
+  const credentials = await loadCredentials({ profileName: params.profileName });
 
   if (!credentials?.clientId || !credentials.clientSecret) {
     throw new Error(
@@ -21,10 +22,10 @@ export async function runLoginCommand(params: RunLoginCommandParams = {}): Promi
     openBrowserAutomatically: params.openBrowserAutomatically,
   });
 
-  await saveCredentials({ credentials: loginResult.credentials });
+  await saveCredentials({ credentials: loginResult.credentials, profileName: params.profileName });
 
   const workspaceLabel = loginResult.credentials.workspaceName ?? loginResult.credentials.workspaceId ?? 'workspace';
   process.stdout.write(`Logged in to ${workspaceLabel}.\n`);
-  process.stdout.write(`Credentials saved to ${getConfigFilePath()}\n`);
+  process.stdout.write(`Credentials saved to ${getConfigFilePath({ profileName: params.profileName })}\n`);
   process.stdout.write('Run `count mcp` to start the local MCP server or `count mcp print-config` for Claude Code.\n');
 }

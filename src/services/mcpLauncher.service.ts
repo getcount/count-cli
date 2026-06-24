@@ -6,10 +6,11 @@ import { getConfigFilePath } from './credentialStore.service.js';
 
 interface BuildMcpEnvironmentParams {
   credentials: CountCliCredentials;
+  credentialsFilePath?: string;
 }
 
 export function buildMcpEnvironment(params: BuildMcpEnvironmentParams): NodeJS.ProcessEnv {
-  const { credentials } = params;
+  const { credentials, credentialsFilePath } = params;
 
   return {
     ...process.env,
@@ -19,7 +20,7 @@ export function buildMcpEnvironment(params: BuildMcpEnvironmentParams): NodeJS.P
     COUNT_ACCESS_TOKEN: credentials.accessToken ?? '',
     COUNT_REFRESH_TOKEN: credentials.refreshToken ?? '',
     COUNT_REQUEST_TIMEOUT_MS: String(credentials.requestTimeoutMs),
-    COUNT_CREDENTIALS_FILE: getConfigFilePath(),
+    COUNT_CREDENTIALS_FILE: credentialsFilePath ?? getConfigFilePath(),
   };
 }
 
@@ -35,11 +36,15 @@ export function resolveCliEntryPath(): string {
 
 interface LaunchPartnerMcpServerParams {
   credentials: CountCliCredentials;
+  credentialsFilePath?: string;
 }
 
 export async function launchPartnerMcpServer(params: LaunchPartnerMcpServerParams): Promise<number> {
   const entryPath = resolvePartnerMcpEntryPath();
-  const environment = buildMcpEnvironment({ credentials: params.credentials });
+  const environment = buildMcpEnvironment({
+    credentials: params.credentials,
+    credentialsFilePath: params.credentialsFilePath,
+  });
 
   return await new Promise<number>((resolve, reject) => {
     const childProcess = spawn(process.execPath, [entryPath], {

@@ -52,12 +52,20 @@ count mcp print-config
 
 | Command | Description |
 | --- | --- |
+| `count setup` | Interactive wizard: credentials, login, MCP install, health checks |
+| `count doctor` | Run CLI/API health checks |
 | `count init` | Save `client_id` / `client_secret` |
 | `count login` | Browser OAuth login + token storage |
-| `count logout` | Delete `~/.count/credentials.json` |
+| `count logout` | Delete stored credentials for the active profile |
 | `count status` | Show whether credentials/tokens are present |
+| `count profiles list` | List named credential profiles |
+| `count profiles add <name>` | Create a profile with partner credentials |
+| `count profiles use <name>` | Switch the active profile |
 | `count mcp` | Start the local COUNT Partner MCP stdio server |
 | `count mcp print-config` | Emit MCP JSON for Claude Code / Cursor |
+| `count mcp install` | Write MCP config into Cursor or Claude settings |
+
+Use `--profile <name>` on any command to target a named profile under `~/.count/profiles/`.
 
 ## Environment
 

@@ -12,7 +12,7 @@ const environmentSchema = z.object({
   COUNT_CLIENT_SECRET: z.string().trim().min(1),
   COUNT_ACCESS_TOKEN: optionalNonEmptyString,
   COUNT_REFRESH_TOKEN: optionalNonEmptyString,
-  COUNT_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  COUNT_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
   COUNT_CREDENTIALS_FILE: optionalNonEmptyString,
 });
 

@@ -72,6 +72,7 @@ export class PartnerApiClient {
   private readonly currentTimeMs: () => number;
   private accessToken?: string;
   private refreshToken?: string;
+  private inFlightRefresh: Promise<void> | null = null;
 
   constructor(params: PartnerApiClientParams) {
     const { config, fetchImplementation = fetch, currentTimeMs = Date.now } = params;
@@ -143,6 +144,21 @@ export class PartnerApiClient {
   }
 
   public async refreshAccessToken(): Promise<void> {
+    if (this.inFlightRefresh) {
+      await this.inFlightRefresh;
+      return;
+    }
+
+    const refreshPromise = this.performRefreshAccessToken();
+    this.inFlightRefresh = refreshPromise;
+    try {
+      await refreshPromise;
+    } finally {
+      this.inFlightRefresh = null;
+    }
+  }
+
+  private async performRefreshAccessToken(): Promise<void> {
     if (!this.refreshToken) {
       throw new PartnerApiError('No refresh token is configured for this MCP server.', 401, {
         message: 'Missing COUNT_REFRESH_TOKEN',
@@ -317,16 +333,46 @@ export class PartnerApiClient {
   private shouldRefreshAfterError(params: ShouldRefreshAfterErrorParams): boolean {
     const { error } = params;
 
+    if (error.statusCode === 403) {
+      return this.isStaleAccessTokenError({ error });
+    }
+
     if (error.statusCode !== 401) {
       return false;
     }
 
-    if (!error.responseBody || typeof error.responseBody !== 'object') {
+    if (this.isStaleAccessTokenError({ error })) {
       return true;
     }
 
+    if (!error.responseBody || typeof error.responseBody !== 'object') {
+      return false;
+    }
+
     const errorBody = error.responseBody as CountApiErrorBody;
-    return errorBody.error === 'invalid_token' || errorBody.error_description === 'The access token expired';
+    if (errorBody.error === 'missing_credentials' || errorBody.error === 'Invalid HMAC signature') {
+      return false;
+    }
+
+    return (
+      errorBody.error === 'invalid_token' ||
+      errorBody.error_description === 'The access token expired'
+    );
+  }
+
+  /** Legacy deployments returned stale rotated tokens as 403 before protectUser emitted 401. */
+  private isStaleAccessTokenError(params: ShouldRefreshAfterErrorParams): boolean {
+    const { error } = params;
+    if (error.message === 'Invalid access token.') {
+      return true;
+    }
+
+    if (!error.responseBody || typeof error.responseBody !== 'object') {
+      return false;
+    }
+
+    const errorBody = error.responseBody as CountApiErrorBody;
+    return errorBody.message === 'Invalid access token.';
   }
 }
 

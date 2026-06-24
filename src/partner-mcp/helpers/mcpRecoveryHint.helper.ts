@@ -19,7 +19,60 @@ interface RecoveryHintRule {
   build: (params: BuildMcpRecoveryHintParams) => McpRecoveryHint;
 }
 
+const GENERIC_PARTNER_FAILURE_MESSAGE = 'could not process your request';
+
 const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
+  {
+    matches: (params) =>
+      params.toolName === 'COUNT_create_account' &&
+      params.statusCode === 500 &&
+      typeof params.message === 'string' &&
+      (params.message.includes(GENERIC_PARTNER_FAILURE_MESSAGE) ||
+        params.message.includes('WHERE parameter') ||
+        params.message.includes('accountTypeId')),
+    build: () => ({
+      summary:
+        'Account creation failed server-side. Do not expose stack traces or file paths to the user — share requestId and suggest creating the account in the COUNT UI or retrying after support checks the error.',
+      knowledgeTopic: 'partner_error_hygiene',
+      describeTool: 'COUNT_create_account',
+      suggestedNextTools: ['COUNT_knowledge', 'COUNT_list_account_sub_types', 'COUNT_describe_endpoint'],
+    }),
+  },
+  {
+    matches: (params) =>
+      params.statusCode === 500 &&
+      typeof params.message === 'string' &&
+      params.message.includes(GENERIC_PARTNER_FAILURE_MESSAGE),
+    build: (params) => ({
+      summary:
+        'COUNT returned a server error for this tool. Tell the user the action could not be completed, share requestId when present, and do not expose stack traces or file paths.',
+      knowledgeTopic: 'partner_error_hygiene',
+      describeTool: params.toolName,
+      suggestedNextTools: ['COUNT_knowledge', 'COUNT_describe_endpoint'],
+    }),
+  },
+  {
+    matches: (params) =>
+      typeof params.message === 'string' && params.message.includes('Invalid query parameter `type`'),
+    build: () => ({
+      summary:
+        'COUNT_list_account_sub_types rejected query.type — use one of Assets, Liabilities, Equity, Income, Expenses (plural, case-sensitive). Omit query.type to list all sub-types.',
+      knowledgeTopic: 'create_chart_of_accounts_account',
+      describeTool: 'COUNT_list_account_sub_types',
+      suggestedNextTools: ['COUNT_describe_endpoint', 'COUNT_knowledge'],
+    }),
+  },
+  {
+    matches: (params) =>
+      typeof params.message === 'string' && params.message.includes('Account sub type not found'),
+    build: () => ({
+      summary:
+        'Resolve subTypeId from COUNT_list_account_sub_types (preferred) or an existing list_accounts row — never guess ids.',
+      knowledgeTopic: 'create_chart_of_accounts_account',
+      describeTool: 'COUNT_create_account',
+      suggestedNextTools: ['COUNT_list_account_sub_types', 'COUNT_knowledge', 'COUNT_describe_endpoint'],
+    }),
+  },
   {
     matches: (params) =>
       typeof params.message === 'string' && params.message.includes('numeric `vendors` is not accepted'),

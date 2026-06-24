@@ -1,6 +1,6 @@
-import { getToolDefinition } from '../tools/definitions';
-import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper';
-import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper';
+import { getToolDefinition } from '../tools/definitions.js';
+import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper.js';
+import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper.js';
 
 /** Keep in sync with `MAX_PARTNER_BULK_BATCH_SIZE` in `src/app/helpers/partnerBulk.helper.ts`. */
 const MAX_PARTNER_BULK_BATCH_SIZE = 100;
@@ -59,6 +59,16 @@ const BULK_TOOL_BODY_FIELDS: Record<string, { bodyField: string; itemLabel: stri
     bodyField: 'journalEntries',
     itemLabel: 'journal entry',
     itemPluralLabel: 'journal entries',
+  },
+  COUNT_bulk_update_budget_cells: {
+    bodyField: 'updates',
+    itemLabel: 'budget cell update',
+    itemPluralLabel: 'budget cell updates',
+  },
+  COUNT_update_budget_cells: {
+    bodyField: 'updates',
+    itemLabel: 'budget cell update',
+    itemPluralLabel: 'budget cell updates',
   },
 };
 
@@ -126,7 +136,12 @@ interface BuildValidationResultParams {
 
 function buildValidationResult(params: BuildValidationResultParams): ValidateMcpPayloadResult {
   const { toolName, issues } = params;
-  const suggestedPlaybook = BULK_TOOL_BODY_FIELDS[toolName] ? 'migration_import' : undefined;
+  const suggestedPlaybook =
+    toolName === 'COUNT_bulk_update_budget_cells' || toolName === 'COUNT_update_budget_cells'
+      ? 'budget_import'
+      : BULK_TOOL_BODY_FIELDS[toolName]
+        ? 'migration_import'
+        : undefined;
   const firstIssueMessage = issues[0]?.message;
   const recoveryHint = firstIssueMessage
     ? buildMcpRecoveryHint({ message: firstIssueMessage, toolName })
@@ -260,6 +275,11 @@ function validateRequiredFieldsForTool(params: ValidateRequiredFieldsForToolPara
 
   if (toolName === 'COUNT_bulk_create_journal_entries') {
     validateBulkJournalEntryRows({ body, issues });
+    return;
+  }
+
+  if (toolName === 'COUNT_bulk_update_budget_cells' || toolName === 'COUNT_update_budget_cells') {
+    validateBulkBudgetCellRows({ body, issues });
     return;
   }
 
@@ -439,6 +459,72 @@ function validateBulkJournalEntryRows(params: ValidateBulkJournalEntryRowsParams
         });
       }
     });
+  });
+}
+
+interface ValidateBulkBudgetCellRowsParams {
+  body: Record<string, unknown>;
+  issues: McpPayloadValidationIssue[];
+}
+
+function validateBulkBudgetCellRows(params: ValidateBulkBudgetCellRowsParams): void {
+  const { body, issues } = params;
+  const updates = body.updates;
+  if (!Array.isArray(updates)) return;
+
+  updates.forEach((_update, index) => {
+    if (!_update || typeof _update !== 'object') {
+      issues.push({
+        path: `body.updates[${index}]`,
+        code: 'missing_required',
+        message: 'Each budget cell update row must be an object.',
+      });
+      return;
+    }
+    const updateObject = _update as Record<string, unknown>;
+    if (
+      Object.prototype.hasOwnProperty.call(updateObject, 'accountId') &&
+      !Object.prototype.hasOwnProperty.call(updateObject, 'accountUuid')
+    ) {
+      issues.push({
+        path: `body.updates[${index}].accountId`,
+        code: 'legacy_numeric_field',
+        message: 'Use accountUuid from list_accounts; numeric accountId is not accepted on budget cell updates.',
+      });
+    }
+    if (!hasNonEmptyString(updateObject.accountUuid)) {
+      issues.push({
+        path: `body.updates[${index}].accountUuid`,
+        code: 'missing_required',
+        message: 'Required field accountUuid (P&L account UUID from list_accounts) is missing.',
+      });
+    }
+    if (!hasNonEmptyString(updateObject.periodStart)) {
+      issues.push({
+        path: `body.updates[${index}].periodStart`,
+        code: 'missing_required',
+        message: 'Required field periodStart (YYYY-MM-DD budget column) is missing.',
+      });
+    }
+    if (updateObject.amount === undefined || updateObject.amount === null) {
+      issues.push({
+        path: `body.updates[${index}].amount`,
+        code: 'missing_required',
+        message: 'Required field amount is missing.',
+      });
+      return;
+    }
+    const parsedAmount =
+      typeof updateObject.amount === 'number'
+        ? updateObject.amount
+        : parseFloat(`${updateObject.amount}`.trim());
+    if (!Number.isFinite(parsedAmount)) {
+      issues.push({
+        path: `body.updates[${index}].amount`,
+        code: 'missing_required',
+        message: 'Required field amount must be a valid number.',
+      });
+    }
   });
 }
 

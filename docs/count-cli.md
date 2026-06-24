@@ -40,14 +40,23 @@ npm link
 ## Workflow
 
 ```bash
-count init --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET"
-count login
+count setup
+count doctor
 count status
-count mcp print-config   # paste into Claude Code / Cursor MCP settings
+count mcp print-config   # optional if you skipped install during setup
 count mcp                # or run the stdio server directly
 ```
 
-Credentials are stored in `~/.count/credentials.json` (mode `600`). Refreshed access tokens are written back to that file automatically during MCP sessions.
+Legacy step-by-step flow:
+
+```bash
+count init --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET"
+count login
+count mcp install --target cursor
+count doctor
+```
+
+Credentials are stored in `~/.count/credentials.json` for the default legacy layout, or under `~/.count/profiles/<name>/credentials.json` when using named profiles (mode `600`). Refreshed access tokens are written back automatically during MCP sessions.
 
 ## Claude Code / Cursor configuration
 
@@ -74,7 +83,17 @@ Example output:
 
 ## Multiple workspaces
 
-Each `count login` completes OAuth for **one workspace**. Repeat `count login` for additional workspaces and store separate credential files manually, or run separate COUNT partner apps per workspace automation account.
+Use named profiles instead of managing credential files manually:
+
+```bash
+count profiles add acme-corp --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET"
+count login --profile acme-corp
+count profiles use acme-corp
+count mcp --profile acme-corp
+count profiles list
+```
+
+Each profile stores credentials under `~/.count/profiles/<name>/credentials.json`. The active profile is tracked in `~/.count/active-profile`.
 
 ## Troubleshooting
 

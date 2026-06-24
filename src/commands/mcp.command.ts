@@ -1,5 +1,5 @@
 import { buildClaudeCodeMcpConfig, launchPartnerMcpServer } from '../services/mcpLauncher.service.js';
-import { loadCredentials } from '../services/credentialStore.service.js';
+import { getConfigFilePath, loadCredentials } from '../services/credentialStore.service.js';
 
 function assertLoggedInCredentials(
   credentials: Awaited<ReturnType<typeof loadCredentials>>,
@@ -13,8 +13,12 @@ function assertLoggedInCredentials(
   }
 }
 
-export async function runMcpStartCommand(): Promise<void> {
-  const credentials = await loadCredentials();
+interface RunMcpStartCommandParams {
+  profileName?: string;
+}
+
+export async function runMcpStartCommand(params: RunMcpStartCommandParams = {}): Promise<void> {
+  const credentials = await loadCredentials({ profileName: params.profileName });
   assertLoggedInCredentials(credentials);
 
   const workspaceLabel = credentials.workspaceName ?? credentials.workspaceId ?? 'authenticated workspace';
@@ -22,7 +26,10 @@ export async function runMcpStartCommand(): Promise<void> {
     `COUNT MCP server started for ${workspaceLabel}. Listening on stdio — press Ctrl+C to stop.\n`,
   );
 
-  const exitCode = await launchPartnerMcpServer({ credentials });
+  const exitCode = await launchPartnerMcpServer({
+    credentials,
+    credentialsFilePath: getConfigFilePath({ profileName: params.profileName }),
+  });
   process.exit(exitCode);
 }
 

@@ -102,6 +102,51 @@ export const MCP_KNOWLEDGE_TOPICS: McpKnowledgeTopic[] = [
     ].join('\n'),
   },
   {
+    id: 'create_chart_of_accounts_account',
+    title: 'How do I create a new chart-of-accounts account (e.g. credit card)?',
+    summary:
+      'Call COUNT_list_account_sub_types first, pick the matching sub-type id, then COUNT_create_account. Never guess subTypeId values.',
+    relatedTopicIds: ['external_uuids', 'describe_endpoint'],
+    keywords: [
+      'create account',
+      'chart of accounts',
+      'subTypeId',
+      'sub type',
+      'credit card',
+      'liability',
+      'list_account_sub_types',
+    ],
+    content: [
+      'To create a new account (bank, credit card, expense category, etc.):',
+      '1. COUNT_list_account_sub_types — optional query.type filter (e.g. "Liabilities" for a credit card). Pick the row whose name matches what you need and copy its integer id.',
+      '2. COUNT_create_account — body.name plus body.subTypeId set to that id.',
+      '3. If a similar account already exists, you may instead COUNT_list_accounts with query.type and reuse subType.id from an existing row.',
+      '',
+      'Never guess or sequentially probe subTypeId numbers — they are sparse global ids, not a predictable sequence.',
+      'If create_account fails, tell the user COUNT could not create the account and share requestId when present. Do not quote stack traces, file paths, or internal database fields.',
+    ].join('\n'),
+  },
+  {
+    id: 'partner_error_hygiene',
+    title: 'What should I tell the user when a COUNT tool fails?',
+    summary:
+      'Use plain business language plus requestId when available. Never expose stack traces, source files, or internal implementation details.',
+    relatedTopicIds: ['describe_endpoint'],
+    keywords: ['error', '500', 'stack', 'internal', 'requestId', 'failure'],
+    content: [
+      'When a COUNT partner or MCP tool returns an error:',
+      '- Tell the user what you were trying to do and that COUNT could not complete it.',
+      '- Include requestId from the error payload when present so support can trace the call.',
+      '- Read _mcpRecoveryHint for suggested next tools (list_account_sub_types, validate_payload, knowledge topics).',
+      '',
+      'Never include in user-visible text:',
+      '- Stack traces or line numbers (e.g. accounts.service.js:141)',
+      '- Source file paths, function names, or ORM/SQL internals',
+      '- Internal database column names (accountTypeId, subTypeId probing commentary, etc.)',
+      '- Narration of your debugging process ("let me probe subtype 14")',
+    ].join('\n'),
+  },
+  {
     id: 'external_uuids',
     title: 'Which IDs should I pass to COUNT tools?',
     summary:
@@ -144,7 +189,7 @@ export const MCP_KNOWLEDGE_TOPICS: McpKnowledgeTopic[] = [
     relatedTopicIds: ['external_uuids'],
     keywords: ['bulk', 'batch', 'import', 'migration', 'partial', 'success'],
     content: [
-      'Bulk tools (COUNT_bulk_create_transactions, COUNT_bulk_create_customers, COUNT_bulk_update_customers, etc.) return:',
+      'Bulk tools (COUNT_bulk_create_transactions, COUNT_bulk_create_customers, COUNT_bulk_update_customers, COUNT_bulk_update_budget_cells, etc.) return:',
       '{ successCount, errorCount, results: [{ index, success, ... | error }] } with HTTP 201 when the batch is accepted.',
       '',
       'Best practices:',
@@ -152,7 +197,25 @@ export const MCP_KNOWLEDGE_TOPICS: McpKnowledgeTopic[] = [
       '- Hard cap: 100 rows per call.',
       '- Recommended batch size: ~25 rows for large backfills (billing-system migrations) to reduce timeout risk.',
       '- Each row is isolated — one failure does not roll back other rows in the same batch.',
-      '- Call COUNT_validate_payload before each bulk batch and COUNT_playbooks playbook migration_import for the full workflow.',
+      '- Call COUNT_validate_payload before each bulk batch and COUNT_playbooks (migration_import or budget_import) for the full workflow.',
+    ].join('\n'),
+  },
+  {
+    id: 'budget_export_import',
+    title: 'How do I export or import budgets for Excel editing?',
+    summary:
+      'Use get_budget_grid to export JSON, edit offline, then bulk_update_budget_cells in ~25-row batches on a draft version.',
+    relatedTopicIds: ['bulk_operations', 'external_uuids'],
+    keywords: ['budget', 'excel', 'export', 'import', 'grid', 'forecast'],
+    content: [
+      'Partner budget tools are JSON-only (no CSV upload). Typical Excel round-trip:',
+      '1. COUNT_get_budget_grid with includeActuals=false for budget amounts only.',
+      '2. Edit amounts in Excel externally — keep accountUuid + periodStart + amount columns aligned with the grid.',
+      '3. COUNT_bulk_update_budget_cells on a draft versionNumber (~25 rows per call; hard cap 100).',
+      '4. Optional COUNT_publish_budget when ready.',
+      '',
+      'Rows require accountUuid (from list_accounts / resolve_references) and periodStart (YYYY-MM-DD from grid columns).',
+      'See COUNT_playbooks playbook budget_import for the ordered workflow.',
     ].join('\n'),
   },
   {
