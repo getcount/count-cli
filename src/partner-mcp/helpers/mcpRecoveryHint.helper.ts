@@ -159,6 +159,46 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
     }),
   },
   {
+    matches: (params) =>
+      params.statusCode === 429 ||
+      params.errorCode === 'RATE_LIMITED' ||
+      (typeof params.message === 'string' && params.message.toLowerCase().includes('too many requests')),
+    build: () => ({
+      summary: 'Rate limit exceeded — back off and retry. See rate_limits_and_throttling topic.',
+      knowledgeTopic: 'rate_limits_and_throttling',
+      suggestedNextTools: ['COUNT_knowledge'],
+    }),
+  },
+  {
+    matches: (params) =>
+      typeof params.message === 'string' &&
+      (params.message.includes('draft') ||
+        params.message.includes('already approved') ||
+        params.message.includes('cannot update') ||
+        params.message.includes('must be approved')),
+    build: (params) => ({
+      summary: 'Invoice or bill state transition rejected — check invoice_lifecycle or bill_lifecycle topic.',
+      knowledgeTopic: params.toolName?.includes('invoice') ? 'invoice_lifecycle' : 'bill_lifecycle',
+      playbook: params.toolName?.includes('invoice') ? 'create_invoice_and_send' : 'pay_vendor_bill',
+      describeTool: params.toolName,
+      suggestedNextTools: ['COUNT_knowledge', 'COUNT_playbooks', 'COUNT_describe_endpoint'],
+    }),
+  },
+  {
+    matches: (params) =>
+      params.statusCode === 400 &&
+      typeof params.message === 'string' &&
+      (params.message.includes('invalid') ||
+        params.message.includes('required') ||
+        params.message.includes('must be')),
+    build: (params) => ({
+      summary: 'Validation failed — call COUNT_validate_payload with the same toolName, body, and query before retrying.',
+      knowledgeTopic: 'field_naming_reference',
+      describeTool: params.toolName,
+      suggestedNextTools: ['COUNT_validate_payload', 'COUNT_describe_endpoint', 'COUNT_knowledge'],
+    }),
+  },
+  {
     matches: (params) => {
       if (!params.responseBody || typeof params.responseBody !== 'object') return false;
       const bodyRecord = params.responseBody as Record<string, unknown>;

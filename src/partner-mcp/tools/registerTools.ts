@@ -10,6 +10,7 @@ import * as mcpRecoveryHintHelper from '../helpers/mcpRecoveryHint.helper.js';
 import * as mcpReferenceResolutionHelper from '../helpers/mcpReferenceResolution.helper.js';
 import * as mcpPayloadValidationHelper from '../helpers/mcpPayloadValidation.helper.js';
 import * as partnerErrorSanitizationHelper from '../helpers/partnerErrorSanitization.helper.js';
+import * as toolInputSchemas from '../schemas/toolInputSchemas.js';
 
 interface RegisterToolsParams {
   server: McpServer;
@@ -112,6 +113,9 @@ async function executeTool(params: ExecuteToolParams): Promise<CallToolResult> {
           destructive: target.destructive,
           documentation: 'https://developers.getcount.com/',
           tips: buildTips({ target }),
+          inputSchemaSummary: toolInputSchemas.summarizeToolInputSchema({ toolName: target.name }),
+          commonErrors: toolInputSchemas.getToolMetadata({ toolName: target.name })?.commonErrors,
+          responseShape: toolInputSchemas.getToolMetadata({ toolName: target.name })?.responseShape,
         },
       });
     }
@@ -142,7 +146,7 @@ async function executeTool(params: ExecuteToolParams): Promise<CallToolResult> {
           availablePlaybookIds: playbookLookup.availablePlaybookIds,
           hint:
             playbookLookup.playbooks.length === 0
-              ? 'No matching playbook. Omit playbook/search to list all playbooks, or pass playbook pay_vendor_bill for bill payment steps.'
+              ? 'No matching playbook. Omit playbook/search to list all playbooks, or pass a playbook id such as pay_vendor_bill, setup_accounts_and_import_transactions, or plan_budget_and_review_actuals.'
               : undefined,
         },
       });
@@ -238,6 +242,7 @@ function buildTips(params: BuildTipsParams): string[] {
   if (target.destructive) {
     tips.push('This tool deletes or invalidates data and cannot be undone.');
   }
+  tips.push('Call COUNT_validate_payload with the same toolName, body, and query before unfamiliar writes.');
   return tips;
 }
 

@@ -1,4 +1,5 @@
 import { getToolDefinition } from '../tools/definitions.js';
+import * as toolInputSchemas from '../schemas/toolInputSchemas.js';
 import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper.js';
 import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper.js';
 
@@ -7,7 +8,13 @@ const MAX_PARTNER_BULK_BATCH_SIZE = 100;
 
 export interface McpPayloadValidationIssue {
   path: string;
-  code: 'missing_required' | 'legacy_numeric_field' | 'invalid_tool' | 'bulk_envelope' | 'reference_not_found';
+  code:
+    | 'missing_required'
+    | 'legacy_numeric_field'
+    | 'invalid_tool'
+    | 'bulk_envelope'
+    | 'reference_not_found'
+    | 'invalid_field';
   message: string;
 }
 
@@ -38,8 +45,6 @@ interface LegacyQueryRule {
   queryField: string;
   uuidQueryField: string;
 }
-
-const QUERY_VALIDATION_READ_TOOLS = new Set(['COUNT_list_bills']);
 
 const LOCAL_GUIDANCE_TOOLS = new Set([
   'COUNT_auth_status',
@@ -104,16 +109,7 @@ export function validateMcpPayload(params: ValidateMcpPayloadParams): ValidateMc
     issues.push({
       path: 'toolName',
       code: 'invalid_tool',
-      message: `COUNT_validate_payload targets mutation tools only. "${toolName}" is read-only or a guidance tool.`,
-    });
-    return buildValidationResult({ toolName, issues });
-  }
-
-  if (toolDefinition.readOnly && !QUERY_VALIDATION_READ_TOOLS.has(toolName)) {
-    issues.push({
-      path: 'toolName',
-      code: 'invalid_tool',
-      message: `COUNT_validate_payload targets mutation tools only. "${toolName}" is read-only or a guidance tool.`,
+      message: `COUNT_validate_payload targets partner API tools only. "${toolName}" is a local guidance tool.`,
     });
     return buildValidationResult({ toolName, issues });
   }
@@ -122,11 +118,45 @@ export function validateMcpPayload(params: ValidateMcpPayloadParams): ValidateMc
   validateLegacyBillListQuery({ toolName, query, issues });
   validateLegacyBillBodyFields({ toolName, body, issues });
   validateRequiredFieldsForTool({ toolName, body, issues });
+  validateSchemaShape({ toolName, body, query, issues });
 
   void verifyReferences;
   void client;
 
   return buildValidationResult({ toolName, issues });
+}
+
+interface ValidateSchemaShapeParams {
+  toolName: string;
+  body?: Record<string, unknown>;
+  query?: Record<string, unknown>;
+  issues: McpPayloadValidationIssue[];
+}
+
+function validateSchemaShape(params: ValidateSchemaShapeParams): void {
+  const { toolName, body, query, issues } = params;
+  const inputSchema = toolInputSchemas.getToolInputSchema({ toolName });
+  const payload: Record<string, unknown> = {};
+  if (query !== undefined) {
+    payload.query = query;
+  }
+  if (body !== undefined) {
+    payload.body = body;
+  }
+
+  const parsedPayload = inputSchema.safeParse(payload);
+  if (parsedPayload.success) {
+    return;
+  }
+
+  for (const zodIssue of parsedPayload.error.issues) {
+    const fieldPath = zodIssue.path.length > 0 ? zodIssue.path.join('.') : 'input';
+    issues.push({
+      path: fieldPath,
+      code: 'invalid_field',
+      message: zodIssue.message,
+    });
+  }
 }
 
 interface BuildValidationResultParams {
