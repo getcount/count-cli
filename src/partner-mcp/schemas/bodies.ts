@@ -15,7 +15,7 @@ export const passthroughBodySchema = z
 export const createTransactionBodySchema = z
   .object({
     accUuid: externalUuidSchema.describe('Bank/cash account UUID from list_accounts.'),
-    amount: z.union([z.number(), z.string()]).describe('Positive decimal amount — server applies sign by type.'),
+    amount: partnerNumericValueSchema.describe('Positive decimal amount — server applies sign by type.'),
     postedDate: isoDateSchema.optional(),
     date: isoDateSchema.optional().describe('Alias for postedDate.'),
     description: z.string().optional(),
@@ -53,7 +53,7 @@ export const updateTransactionBodySchema = z
     tagUuids: tagUuidsBodySchema,
     description: z.string().optional(),
     notes: z.string().optional(),
-    amount: z.union([z.number(), z.string()]).optional(),
+    amount: partnerNumericValueOptionalSchema,
     postedDate: isoDateSchema.optional(),
     authorizedDate: isoDateSchema.optional(),
   })
