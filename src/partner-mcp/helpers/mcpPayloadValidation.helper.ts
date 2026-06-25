@@ -2,6 +2,7 @@ import { getToolDefinition } from '../tools/definitions.js';
 import * as toolInputSchemas from '../schemas/toolInputSchemas.js';
 import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper.js';
 import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper.js';
+import { z } from 'zod';
 
 /** Keep in sync with `MAX_PARTNER_BULK_BATCH_SIZE` in `src/app/helpers/partnerBulk.helper.ts`. */
 const MAX_PARTNER_BULK_BATCH_SIZE = 100;
@@ -136,21 +137,49 @@ interface ValidateSchemaShapeParams {
 function validateSchemaShape(params: ValidateSchemaShapeParams): void {
   const { toolName, body, query, issues } = params;
   const inputSchema = toolInputSchemas.getToolInputSchema({ toolName });
-  const payload: Record<string, unknown> = {};
-  if (query !== undefined) {
-    payload.query = query;
-  }
-  if (body !== undefined) {
-    payload.body = body;
-  }
 
-  const parsedPayload = inputSchema.safeParse(payload);
-  if (parsedPayload.success) {
+  if (!(inputSchema instanceof z.ZodObject)) {
     return;
   }
 
-  for (const zodIssue of parsedPayload.error.issues) {
-    const fieldPath = zodIssue.path.length > 0 ? zodIssue.path.join('.') : 'input';
+  const toolInputShape = inputSchema.shape;
+
+  if (query !== undefined && toolInputShape.query) {
+    validateValidatePayloadSubSchema({
+      subSchema: toolInputShape.query as z.ZodTypeAny,
+      value: query,
+      pathPrefix: 'query',
+      issues,
+    });
+  }
+
+  if (body !== undefined && toolInputShape.body) {
+    validateValidatePayloadSubSchema({
+      subSchema: toolInputShape.body as z.ZodTypeAny,
+      value: body,
+      pathPrefix: 'body',
+      issues,
+    });
+  }
+}
+
+interface ValidateValidatePayloadSubSchemaParams {
+  subSchema: z.ZodTypeAny;
+  value: unknown;
+  pathPrefix: string;
+  issues: McpPayloadValidationIssue[];
+}
+
+function validateValidatePayloadSubSchema(params: ValidateValidatePayloadSubSchemaParams): void {
+  const { subSchema, value, pathPrefix, issues } = params;
+  const parsedSubSchema = subSchema.safeParse(value);
+  if (parsedSubSchema.success) {
+    return;
+  }
+
+  for (const zodIssue of parsedSubSchema.error.issues) {
+    const fieldPath =
+      zodIssue.path.length > 0 ? `${pathPrefix}.${zodIssue.path.join('.')}` : pathPrefix;
     issues.push({
       path: fieldPath,
       code: 'invalid_field',

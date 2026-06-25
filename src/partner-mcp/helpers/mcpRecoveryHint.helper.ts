@@ -170,12 +170,20 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
     }),
   },
   {
-    matches: (params) =>
-      typeof params.message === 'string' &&
-      (params.message.includes('draft') ||
-        params.message.includes('already approved') ||
-        params.message.includes('cannot update') ||
-        params.message.includes('must be approved')),
+    matches: (params) => {
+      const toolName = params.toolName ?? '';
+      const isInvoiceOrBillTool = toolName.includes('invoice') || toolName.includes('bill');
+      if (!isInvoiceOrBillTool) {
+        return false;
+      }
+      return (
+        typeof params.message === 'string' &&
+        (params.message.includes('draft') ||
+          params.message.includes('already approved') ||
+          params.message.includes('cannot update') ||
+          params.message.includes('must be approved'))
+      );
+    },
     build: (params) => ({
       summary: 'Invoice or bill state transition rejected — check invoice_lifecycle or bill_lifecycle topic.',
       knowledgeTopic: params.toolName?.includes('invoice') ? 'invoice_lifecycle' : 'bill_lifecycle',

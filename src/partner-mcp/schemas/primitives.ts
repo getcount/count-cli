@@ -74,10 +74,31 @@ export const tagUuidsBodySchema = z
   .optional()
   .describe('Array of tag UUIDs from list_tags.');
 
-export const transactionTypeFilterSchema = z
-  .enum(PARTNER_TRANSACTION_TYPE_FILTER_VALUES)
-  .optional()
-  .describe('Filter by transaction type: Expense, Income, Transfer, or Journal Entry.');
+export const transactionTypeFilterSchema = z.preprocess(
+  (value) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    if (typeof value !== 'string') {
+      return value;
+    }
+    const normalizedKey = value.trim().toUpperCase().replace(/\s+/g, '_');
+    const partnerTransactionTypeByNormalizedKey: Record<
+      string,
+      (typeof PARTNER_TRANSACTION_TYPE_FILTER_VALUES)[number]
+    > = {
+      EXPENSE: 'Expense',
+      INCOME: 'Income',
+      TRANSFER: 'Transfer',
+      JOURNAL: 'Journal Entry',
+      JOURNAL_ENTRY: 'Journal Entry',
+    };
+    return partnerTransactionTypeByNormalizedKey[normalizedKey] ?? value;
+  },
+  z.enum(PARTNER_TRANSACTION_TYPE_FILTER_VALUES),
+).optional().describe(
+  'Filter by transaction type: Expense, Income, Transfer, or Journal Entry. Lowercase aliases (expense, journal_entry, etc.) are accepted and normalized.',
+);
 
 export const partnerAccountTypeSchema = z
   .enum(PARTNER_ACCOUNT_TYPE_VALUES)
