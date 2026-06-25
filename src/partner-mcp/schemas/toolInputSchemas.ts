@@ -15,6 +15,7 @@ import {
   createBudgetVersionBodySchema,
   createCustomerBodySchema,
   createInvoiceBodySchema,
+  createRecurringInvoiceTemplateBodySchema,
   createJournalEntryBodySchema,
   createProductBodySchema,
   createProjectBodySchema,
@@ -187,7 +188,9 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
 
   COUNT_list_recurring_invoice_templates: listPaginationQuerySchema,
   COUNT_get_recurring_invoice_template: genericIdSchema,
-  COUNT_create_recurring_invoice_template: buildBodyToolInputSchema({ bodyObjectSchema: createInvoiceBodySchema }),
+  COUNT_create_recurring_invoice_template: buildBodyToolInputSchema({
+    bodyObjectSchema: createRecurringInvoiceTemplateBodySchema,
+  }),
   COUNT_update_recurring_invoice_template: genericIdBodySchema,
   COUNT_delete_recurring_invoice_template: genericIdSchema,
   COUNT_pause_recurring_invoice_template: genericIdOptionalBodySchema,

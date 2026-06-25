@@ -21,6 +21,28 @@ interface RecoveryHintRule {
 
 const GENERIC_PARTNER_FAILURE_MESSAGE = 'could not process your request';
 
+interface ResolveDocumentLifecycleContextParams {
+  toolName: string;
+}
+
+function resolveDocumentLifecycleContext(params: ResolveDocumentLifecycleContextParams): 'invoice' | 'bill' | null {
+  const { toolName } = params;
+
+  if (toolName.includes('bills_invoices')) {
+    return null;
+  }
+
+  if (toolName.includes('invoice')) {
+    return 'invoice';
+  }
+
+  if (toolName.includes('_bills') || toolName.includes('_bill')) {
+    return 'bill';
+  }
+
+  return null;
+}
+
 const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
   {
     matches: (params) =>
@@ -172,8 +194,8 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
   {
     matches: (params) => {
       const toolName = params.toolName ?? '';
-      const isInvoiceOrBillTool = toolName.includes('invoice') || toolName.includes('bill');
-      if (!isInvoiceOrBillTool) {
+      const lifecycleContext = resolveDocumentLifecycleContext({ toolName });
+      if (!lifecycleContext) {
         return false;
       }
       return (
@@ -184,13 +206,17 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
           params.message.includes('must be approved'))
       );
     },
-    build: (params) => ({
-      summary: 'Invoice or bill state transition rejected — check invoice_lifecycle or bill_lifecycle topic.',
-      knowledgeTopic: params.toolName?.includes('invoice') ? 'invoice_lifecycle' : 'bill_lifecycle',
-      playbook: params.toolName?.includes('invoice') ? 'create_invoice_and_send' : 'pay_vendor_bill',
-      describeTool: params.toolName,
-      suggestedNextTools: ['COUNT_knowledge', 'COUNT_playbooks', 'COUNT_describe_endpoint'],
-    }),
+    build: (params) => {
+      const lifecycleContext = resolveDocumentLifecycleContext({ toolName: params.toolName ?? '' });
+      const isInvoiceContext = lifecycleContext === 'invoice';
+      return {
+        summary: 'Invoice or bill state transition rejected — check invoice_lifecycle or bill_lifecycle topic.',
+        knowledgeTopic: isInvoiceContext ? 'invoice_lifecycle' : 'bill_lifecycle',
+        playbook: isInvoiceContext ? 'create_invoice_and_send' : 'pay_vendor_bill',
+        describeTool: params.toolName,
+        suggestedNextTools: ['COUNT_knowledge', 'COUNT_playbooks', 'COUNT_describe_endpoint'],
+      };
+    },
   },
   {
     matches: (params) =>

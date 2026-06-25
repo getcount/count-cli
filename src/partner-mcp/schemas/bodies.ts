@@ -186,21 +186,46 @@ export const invoiceProductLineSchema = z.object({
   unitPrice: z.union([z.number(), z.string()]),
 });
 
-export const createInvoiceBodySchema = z
-  .object({
-    customerUuid: externalUuidSchema,
-    date: isoDateSchema,
-    products: z.array(invoiceProductLineSchema).min(1),
-    invoiceType: z.enum(['invoice', 'estimate', 'memo']).optional(),
-    invoiceNumber: z.string().optional(),
-    dueDate: isoDateSchema.optional(),
-    currency: z.string().optional(),
-    discount: z.union([z.number(), z.string()]).optional(),
-    discountDescription: z.string().optional(),
-    notes: z.string().optional(),
-    tagUuids: tagUuidsBodySchema,
-    appliedToInvoiceUuid: externalUuidSchema.optional(),
-    isDraft: z.boolean().optional(),
+export const createInvoiceBodyObjectSchema = z.object({
+  customerUuid: externalUuidSchema,
+  date: isoDateSchema,
+  products: z.array(invoiceProductLineSchema).min(1),
+  invoiceType: z.enum(['invoice', 'estimate', 'memo']).optional(),
+  invoiceNumber: z.string().optional(),
+  dueDate: isoDateSchema.optional(),
+  currency: z.string().optional(),
+  discount: z.union([z.number(), z.string()]).optional(),
+  discountDescription: z.string().optional(),
+  notes: z.string().optional(),
+  tagUuids: tagUuidsBodySchema,
+  appliedToInvoiceUuid: externalUuidSchema.optional(),
+  isDraft: z.boolean().optional(),
+});
+
+export const createInvoiceBodySchema = createInvoiceBodyObjectSchema.passthrough();
+
+export const recurrencePatternSchema = z
+  .string()
+  .min(1)
+  .describe(
+    'Schedule cadence: daily, weekly, biweekly, monthly, quarterly, or yearly. Aliases like bi-weekly are normalized server-side.',
+  );
+
+export const createRecurringInvoiceTemplateBodySchema = createInvoiceBodyObjectSchema
+  .extend({
+    recurrencePattern: recurrencePatternSchema,
+    inAdvanceCreationDays: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('Days before each scheduled date to generate the next invoice instance.'),
+    recurrenceInterval: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('Repeat every N recurrencePattern units (defaults to 1).'),
   })
   .passthrough();
 
