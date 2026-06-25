@@ -117,3 +117,22 @@ export const searchQuerySchema = z.object({
 export const versionNumberSchema = z
   .union([z.string(), z.number()])
   .describe('Budget version number (integer, starting at 1).');
+
+function isPartnerNumericValue(value: unknown): boolean {
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  if (typeof value === 'string') {
+    const trimmedValue = value.trim();
+    return trimmedValue !== '' && Number.isFinite(Number(trimmedValue));
+  }
+  return false;
+}
+
+/** Quantity, price, amount, and similar fields — number or numeric string; rejects values like "abc". */
+export const partnerNumericValueSchema = z
+  .union([z.number(), z.string()])
+  .refine(isPartnerNumericValue, 'Must be a valid number.')
+  .describe('Numeric value — pass a number or a numeric string (e.g. quantity, price, or amount).');
+
+export const partnerNumericValueOptionalSchema = partnerNumericValueSchema.optional();

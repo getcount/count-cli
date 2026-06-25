@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   externalUuidSchema,
   isoDateSchema,
+  partnerNumericValueOptionalSchema,
+  partnerNumericValueSchema,
   tagUuidsBodySchema,
   transactionTypeFilterSchema,
 } from './primitives.js';
@@ -139,9 +141,9 @@ export const bulkUpdateCustomersBodySchema = z.object({
 export const createBillLineItemSchema = z.object({
   categoryAccountUuid: externalUuidSchema.describe('Expense category account UUID from list_accounts.'),
   description: z.string().optional(),
-  quantity: z.union([z.number(), z.string()]),
-  price: z.union([z.number(), z.string()]),
-  total: z.union([z.number(), z.string()]).optional(),
+  quantity: partnerNumericValueSchema,
+  price: partnerNumericValueSchema,
+  total: partnerNumericValueOptionalSchema,
   taxes: z.array(z.number()).optional(),
   projectUuid: externalUuidSchema.optional(),
   customerUuid: externalUuidSchema.optional(),
@@ -183,8 +185,8 @@ export const invoiceProductLineSchema = z
   .object({
     productUuid: externalUuidSchema.optional().describe('Product UUID from list_products.'),
     uuid: externalUuidSchema.optional().describe('Alias for productUuid.'),
-    quantity: z.union([z.number(), z.string()]),
-    unitPrice: z.union([z.number(), z.string()]),
+    quantity: partnerNumericValueSchema,
+    unitPrice: partnerNumericValueSchema,
   })
   .refine((_line) => _line.productUuid != null || _line.uuid != null, {
     message: 'Each product line requires productUuid or uuid from list_products.',
