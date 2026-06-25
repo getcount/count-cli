@@ -144,19 +144,19 @@ function validateSchemaShape(params: ValidateSchemaShapeParams): void {
 
   const toolInputShape = inputSchema.shape;
 
-  if (query !== undefined && toolInputShape.query) {
+  if (toolInputShape.query) {
     validateValidatePayloadSubSchema({
       subSchema: toolInputShape.query as z.ZodTypeAny,
-      value: query,
+      value: query ?? {},
       pathPrefix: 'query',
       issues,
     });
   }
 
-  if (body !== undefined && toolInputShape.body) {
+  if (toolInputShape.body) {
     validateValidatePayloadSubSchema({
       subSchema: toolInputShape.body as z.ZodTypeAny,
-      value: body,
+      value: body ?? {},
       pathPrefix: 'body',
       issues,
     });
