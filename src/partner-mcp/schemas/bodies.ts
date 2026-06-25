@@ -295,6 +295,28 @@ export const createJournalEntryBodySchema = z.object({
   withCaution: z.boolean().optional(),
 });
 
+export const updateJournalEntryBodySchema = z
+  .object({
+    descriptionEntry: z.string().min(1).optional().describe('Updated posting memo.'),
+    date: isoDateSchema.optional().describe('Updated posting date (YYYY-MM-DD).'),
+    lines: z
+      .array(journalEntryLineSchema)
+      .min(2)
+      .optional()
+      .describe('Full replacement lines array when updating line items.'),
+    refNumber: z.string().optional().describe('Updated reference number.'),
+    withCaution: z.boolean().optional().describe('Skip book-closeness checks when true.'),
+  })
+  .refine(
+    (body) =>
+      body.descriptionEntry != null ||
+      body.date != null ||
+      body.lines != null ||
+      body.refNumber != null ||
+      body.withCaution != null,
+    { message: 'Provide at least one field to update.' },
+  );
+
 export const bulkCreateJournalEntriesBodySchema = z.object({
   journalEntries: z.array(createJournalEntryBodySchema).min(1).max(100),
 });

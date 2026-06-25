@@ -17,6 +17,7 @@ import {
   createInvoiceBodySchema,
   createRecurringInvoiceTemplateBodySchema,
   createJournalEntryBodySchema,
+  updateJournalEntryBodySchema,
   createProductBodySchema,
   createProjectBodySchema,
   createTagBodySchema,
@@ -208,7 +209,7 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
   COUNT_list_journal_entries: listPaginationQuerySchema,
   COUNT_create_journal_entry: buildBodyToolInputSchema({ bodyObjectSchema: createJournalEntryBodySchema }),
   COUNT_bulk_create_journal_entries: buildBodyToolInputSchema({ bodyObjectSchema: bulkCreateJournalEntriesBodySchema }),
-  COUNT_update_journal_entry: buildIdBodyToolInputSchema({ bodyObjectSchema: createJournalEntryBodySchema }),
+  COUNT_update_journal_entry: buildIdBodyToolInputSchema({ bodyObjectSchema: updateJournalEntryBodySchema }),
   COUNT_delete_journal_entry: genericIdSchema,
 
   COUNT_list_tasks: buildQueryToolInputSchema({ queryObjectSchema: listTasksQuerySchema }),

@@ -38,7 +38,7 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     name: 'COUNT_playbooks',
     title: 'COUNT Playbooks',
     description:
-      'End-to-end accounting workflows with ordered steps and tool names. Call before multi-step tasks such as paying a vendor bill, creating and sending an invoice, bulk migration imports, chart-of-accounts setup with transaction import, budget planning with actuals review, or month-end review. Optional input: `playbook` (id) or `search` (free text). Omit both to list all playbooks with summaries. Playbook ids: pay_vendor_bill, create_invoice_and_send, migration_import, budget_import, month_end_review, setup_accounts_and_import_transactions, plan_budget_and_review_actuals.',
+      'End-to-end accounting workflows with ordered steps and tool names. Call before multi-step tasks such as paying a vendor bill, creating and sending an invoice, bulk migration imports, or month-end review. Optional input: `playbook` (id) or `search` (free text). Omit both to list all playbooks with summaries. Playbook ids: pay_vendor_bill, create_invoice_and_send, migration_import, budget_import, month_end_review.',
     method: 'GET',
     pathTemplate: '/__local/playbooks',
     requiresUserAuth: false,
@@ -853,7 +853,7 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     name: 'COUNT_update_journal_entry',
     title: 'Update Journal Entry',
     description:
-      'Update a manually-created journal entry by external UUID. Same body shape as `create_journal_entry` (top-level `descriptionEntry`, `date`, `refNumber`, plus the full replacement `lines` array — each line takes `accountUuid` and exactly one of `amountDebit`/`amountCredit`). Only manually-created entries (and Square integration entries) can be updated; system-generated journal entries from invoices, bills, payroll, etc. are read-only and return 400.',
+      'Update a manually-created journal entry by external UUID. PATCH accepts partial bodies — send only the fields you want to change (`descriptionEntry`, `date`, `refNumber`, and/or the full replacement `lines` array). When `lines` is included, each line takes `accountUuid` and exactly one of `amountDebit`/`amountCredit`. Only manually-created entries (and Square integration entries) can be updated; system-generated journal entries from invoices, bills, payroll, etc. are read-only and return 400.',
     method: 'PATCH',
     pathTemplate: '/partners/journal-entries/{id}',
     requiresUserAuth: true,
