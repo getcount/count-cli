@@ -305,6 +305,28 @@ function validateLegacyBillBodyFields(params: ValidateLegacyBillBodyFieldsParams
       message: `Use \`${legacyRule.uuidField}\` (${legacyRule.entityLabel}); numeric \`${legacyRule.bodyField}\` is not accepted on partner bill requests.`,
     });
   }
+
+  const lineItems = body.lineItems;
+  if (!Array.isArray(lineItems)) {
+    return;
+  }
+
+  lineItems.forEach((_lineItem, index) => {
+    if (!_lineItem || typeof _lineItem !== 'object') {
+      return;
+    }
+    const lineItemObject = _lineItem as Record<string, unknown>;
+    if (
+      Object.prototype.hasOwnProperty.call(lineItemObject, 'categoryAccountId') &&
+      !Object.prototype.hasOwnProperty.call(lineItemObject, 'categoryAccountUuid')
+    ) {
+      issues.push({
+        path: `body.lineItems[${index}].categoryAccountId`,
+        code: 'legacy_numeric_field',
+        message: 'Use categoryAccountUuid from list_accounts instead of categoryAccountId.',
+      });
+    }
+  });
 }
 
 interface ValidateRequiredFieldsForToolParams {
@@ -340,10 +362,6 @@ function validateRequiredFieldsForTool(params: ValidateRequiredFieldsForToolPara
   if (toolName === 'COUNT_bulk_update_budget_cells' || toolName === 'COUNT_update_budget_cells') {
     validateBulkBudgetCellRows({ body, issues });
     return;
-  }
-
-  if (toolName === 'COUNT_create_bill') {
-    validateCreateBillBody({ body, issues });
   }
 }
 
@@ -582,85 +600,6 @@ function validateBulkBudgetCellRows(params: ValidateBulkBudgetCellRowsParams): v
         path: `body.updates[${index}].amount`,
         code: 'missing_required',
         message: 'Required field amount must be a valid number.',
-      });
-    }
-  });
-}
-
-interface ValidateCreateBillBodyParams {
-  body: Record<string, unknown>;
-  issues: McpPayloadValidationIssue[];
-}
-
-function validateCreateBillBody(params: ValidateCreateBillBodyParams): void {
-  const { body, issues } = params;
-
-  if (!hasNonEmptyString(body.vendorUuid)) {
-    issues.push({
-      path: 'body.vendorUuid',
-      code: 'missing_required',
-      message: 'Required field vendorUuid (from list_vendors) is missing.',
-    });
-  }
-  if (!hasNonEmptyString(body.date)) {
-    issues.push({
-      path: 'body.date',
-      code: 'missing_required',
-      message: 'Required field date (YYYY-MM-DD) is missing.',
-    });
-  }
-  if (!hasNonEmptyString(body.dueDate)) {
-    issues.push({
-      path: 'body.dueDate',
-      code: 'missing_required',
-      message: 'Required field dueDate (YYYY-MM-DD) is missing.',
-    });
-  }
-  if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
-    issues.push({
-      path: 'body.lineItems',
-      code: 'missing_required',
-      message: 'Required field lineItems must be a non-empty array.',
-    });
-    return;
-  }
-
-  body.lineItems.forEach((_lineItem, index) => {
-    if (!_lineItem || typeof _lineItem !== 'object') {
-      issues.push({
-        path: `body.lineItems[${index}]`,
-        code: 'missing_required',
-        message: 'Each line item must be an object.',
-      });
-      return;
-    }
-    const lineItemObject = _lineItem as Record<string, unknown>;
-    if (!hasNonEmptyString(lineItemObject.categoryAccountUuid)) {
-      issues.push({
-        path: `body.lineItems[${index}].categoryAccountUuid`,
-        code: 'missing_required',
-        message: 'Each line item requires categoryAccountUuid from list_accounts.',
-      });
-    }
-    if (Object.prototype.hasOwnProperty.call(lineItemObject, 'categoryAccountId')) {
-      issues.push({
-        path: `body.lineItems[${index}].categoryAccountId`,
-        code: 'legacy_numeric_field',
-        message: 'Use categoryAccountUuid from list_accounts instead of categoryAccountId.',
-      });
-    }
-    if (!hasRequiredNumericField(lineItemObject.quantity)) {
-      issues.push({
-        path: `body.lineItems[${index}].quantity`,
-        code: 'missing_required',
-        message: 'Each line item requires quantity.',
-      });
-    }
-    if (!hasRequiredNumericField(lineItemObject.price)) {
-      issues.push({
-        path: `body.lineItems[${index}].price`,
-        code: 'missing_required',
-        message: 'Each line item requires price.',
       });
     }
   });

@@ -23,12 +23,22 @@ const GENERIC_PARTNER_FAILURE_MESSAGE = 'could not process your request';
 
 interface ResolveDocumentLifecycleContextParams {
   toolName: string;
+  message?: string;
 }
 
 function resolveDocumentLifecycleContext(params: ResolveDocumentLifecycleContextParams): 'invoice' | 'bill' | null {
-  const { toolName } = params;
+  const { toolName, message } = params;
 
-  if (toolName.includes('bills_invoices')) {
+  if (toolName === 'COUNT_assign_transaction_to_bills_invoices') {
+    if (typeof message === 'string') {
+      const normalizedMessage = message.toLowerCase();
+      if (normalizedMessage.includes('bill')) {
+        return 'bill';
+      }
+      if (normalizedMessage.includes('invoice')) {
+        return 'invoice';
+      }
+    }
     return null;
   }
 
@@ -194,7 +204,10 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
   {
     matches: (params) => {
       const toolName = params.toolName ?? '';
-      const lifecycleContext = resolveDocumentLifecycleContext({ toolName });
+      const lifecycleContext = resolveDocumentLifecycleContext({
+        toolName,
+        message: params.message,
+      });
       if (!lifecycleContext) {
         return false;
       }
@@ -207,7 +220,10 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
       );
     },
     build: (params) => {
-      const lifecycleContext = resolveDocumentLifecycleContext({ toolName: params.toolName ?? '' });
+      const lifecycleContext = resolveDocumentLifecycleContext({
+        toolName: params.toolName ?? '',
+        message: params.message,
+      });
       const isInvoiceContext = lifecycleContext === 'invoice';
       return {
         summary: 'Invoice or bill state transition rejected — check invoice_lifecycle or bill_lifecycle topic.',
