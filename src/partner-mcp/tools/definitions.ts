@@ -38,7 +38,7 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     name: 'COUNT_playbooks',
     title: 'COUNT Playbooks',
     description:
-      'End-to-end accounting workflows with ordered steps and tool names. Call before multi-step tasks such as paying a vendor bill, creating and sending an invoice, bulk migration imports, or month-end review. Optional input: `playbook` (id) or `search` (free text). Omit both to list all playbooks with summaries. Playbook ids: pay_vendor_bill, create_invoice_and_send, migration_import, budget_import, month_end_review.',
+      'End-to-end accounting workflows with ordered steps and tool names. Call before multi-step tasks such as paying a vendor bill, creating and sending an invoice, bulk migration imports, chart-of-accounts setup with transaction import, budget planning with actuals review, or month-end review. Optional input: `playbook` (id) or `search` (free text). Omit both to list all playbooks with summaries. Playbook ids: pay_vendor_bill, create_invoice_and_send, migration_import, budget_import, month_end_review, setup_accounts_and_import_transactions, plan_budget_and_review_actuals.',
     method: 'GET',
     pathTemplate: '/__local/playbooks',
     requiresUserAuth: false,
@@ -682,7 +682,7 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     name: 'COUNT_create_recurring_invoice_template',
     title: 'Create Recurring Invoice Template',
     description:
-      'Create a recurring invoice template. Same body shape as `create_invoice` (`customerUuid`, `products`, etc.) PLUS a required `recurrencePattern` object describing the cadence (e.g. monthly, weekly). Optional `inAdvanceCreationDays` controls how many days before each scheduled date the next invoice instance is generated. `invoiceType` defaults to "invoice"; "memo" is rejected (credit memos cannot recur). `isDraft` defaults to true so the template is paused until you explicitly resume it via `resume_recurring_invoice_template`.',
+      'Create a recurring invoice template. Same body shape as `create_invoice` (`customerUuid`, `products`, etc.) PLUS a required `recurrencePattern` string cadence (daily, weekly, biweekly, monthly, quarterly, or yearly). Optional `inAdvanceCreationDays` controls how many days before each scheduled date the next invoice instance is generated. `invoiceType` defaults to "invoice"; "memo" is rejected (credit memos cannot recur). `isDraft` defaults to true so the template is paused until you explicitly resume it via `resume_recurring_invoice_template`.',
     method: 'POST',
     pathTemplate: '/partners/recurring-invoice-templates',
     requiresUserAuth: true,

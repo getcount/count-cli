@@ -191,10 +191,7 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
     }),
   },
   {
-    matches: (params) =>
-      params.statusCode === 429 ||
-      params.errorCode === 'RATE_LIMITED' ||
-      (typeof params.message === 'string' && params.message.toLowerCase().includes('too many requests')),
+    matches: (params) => params.statusCode === 429,
     build: () => ({
       summary: 'Rate limit exceeded — back off and retry. See rate_limits_and_throttling topic.',
       knowledgeTopic: 'rate_limits_and_throttling',

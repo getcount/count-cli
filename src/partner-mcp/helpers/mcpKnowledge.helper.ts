@@ -197,7 +197,7 @@ export const MCP_KNOWLEDGE_TOPICS: McpKnowledgeTopic[] = [
       '- Hard cap: 100 rows per call.',
       '- Recommended batch size: ~25 rows for large backfills (billing-system migrations) to reduce timeout risk.',
       '- Each row is isolated — one failure does not roll back other rows in the same batch.',
-      '- Call COUNT_validate_payload before each bulk batch and COUNT_playbooks (migration_import, budget_import, setup_accounts_and_import_transactions, or plan_budget_and_review_actuals) for the full workflow.',
+      '- Call COUNT_validate_payload before each bulk batch and COUNT_playbooks (migration_import, budget_import, create_invoice_and_send, setup_accounts_and_import_transactions, or plan_budget_and_review_actuals) for the full workflow.',
       '',
       'Failure handling example:',
       '1. const failures = result.results.filter((row) => !row.success);',

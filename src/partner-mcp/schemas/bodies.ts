@@ -179,12 +179,17 @@ export const unassignBillTransactionBodySchema = z.object({
   withCaution: z.boolean().optional(),
 });
 
-export const invoiceProductLineSchema = z.object({
-  productUuid: externalUuidSchema.optional(),
-  uuid: externalUuidSchema.optional(),
-  quantity: z.union([z.number(), z.string()]),
-  unitPrice: z.union([z.number(), z.string()]),
-});
+export const invoiceProductLineSchema = z
+  .object({
+    productUuid: externalUuidSchema.optional().describe('Product UUID from list_products.'),
+    uuid: externalUuidSchema.optional().describe('Alias for productUuid.'),
+    quantity: z.union([z.number(), z.string()]),
+    unitPrice: z.union([z.number(), z.string()]),
+  })
+  .refine((_line) => _line.productUuid != null || _line.uuid != null, {
+    message: 'Each product line requires productUuid or uuid from list_products.',
+    path: ['productUuid'],
+  });
 
 export const createInvoiceBodyObjectSchema = z.object({
   customerUuid: externalUuidSchema,
