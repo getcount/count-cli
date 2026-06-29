@@ -10,8 +10,19 @@ import {
   loadCredentials,
   saveCredentials,
 } from '../services/credentialStore.service.js';
+import { DEFAULT_API_BASE_URL } from '../constants.js';
 
 describe('credentialStore', () => {
+  it('defaults to the production API host when no api URL is provided', () => {
+    const credentials = buildDefaultCredentials({
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+    });
+
+    assert.equal(credentials.apiBaseUrl, DEFAULT_API_BASE_URL);
+    assert.equal(credentials.apiBaseUrl, 'https://api.getcount.com');
+  });
+
   it('saves and reloads credentials with restricted file permissions', async () => {
     const temporaryHomeDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'count-cli-home-'));
     const configFilePath = getConfigFilePath({ homeDirectory: temporaryHomeDirectory });
