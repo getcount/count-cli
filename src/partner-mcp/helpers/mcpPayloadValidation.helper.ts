@@ -1,13 +1,21 @@
 import { getToolDefinition } from '../tools/definitions.js';
+import * as toolInputSchemas from '../schemas/toolInputSchemas.js';
 import { buildMcpRecoveryHint } from './mcpRecoveryHint.helper.js';
 import type { McpReferenceResolutionPartnerClient } from './mcpReferenceResolution.helper.js';
+import { z } from 'zod';
 
 /** Keep in sync with `MAX_PARTNER_BULK_BATCH_SIZE` in `src/app/helpers/partnerBulk.helper.ts`. */
 const MAX_PARTNER_BULK_BATCH_SIZE = 100;
 
 export interface McpPayloadValidationIssue {
   path: string;
-  code: 'missing_required' | 'legacy_numeric_field' | 'invalid_tool' | 'bulk_envelope' | 'reference_not_found';
+  code:
+    | 'missing_required'
+    | 'legacy_numeric_field'
+    | 'invalid_tool'
+    | 'bulk_envelope'
+    | 'reference_not_found'
+    | 'invalid_field';
   message: string;
 }
 
@@ -38,8 +46,6 @@ interface LegacyQueryRule {
   queryField: string;
   uuidQueryField: string;
 }
-
-const QUERY_VALIDATION_READ_TOOLS = new Set(['COUNT_list_bills']);
 
 const LOCAL_GUIDANCE_TOOLS = new Set([
   'COUNT_auth_status',
@@ -104,16 +110,7 @@ export function validateMcpPayload(params: ValidateMcpPayloadParams): ValidateMc
     issues.push({
       path: 'toolName',
       code: 'invalid_tool',
-      message: `COUNT_validate_payload targets mutation tools only. "${toolName}" is read-only or a guidance tool.`,
-    });
-    return buildValidationResult({ toolName, issues });
-  }
-
-  if (toolDefinition.readOnly && !QUERY_VALIDATION_READ_TOOLS.has(toolName)) {
-    issues.push({
-      path: 'toolName',
-      code: 'invalid_tool',
-      message: `COUNT_validate_payload targets mutation tools only. "${toolName}" is read-only or a guidance tool.`,
+      message: `COUNT_validate_payload targets partner API tools only. "${toolName}" is a local guidance tool.`,
     });
     return buildValidationResult({ toolName, issues });
   }
@@ -122,11 +119,73 @@ export function validateMcpPayload(params: ValidateMcpPayloadParams): ValidateMc
   validateLegacyBillListQuery({ toolName, query, issues });
   validateLegacyBillBodyFields({ toolName, body, issues });
   validateRequiredFieldsForTool({ toolName, body, issues });
+  validateSchemaShape({ toolName, body, query, issues });
 
   void verifyReferences;
   void client;
 
   return buildValidationResult({ toolName, issues });
+}
+
+interface ValidateSchemaShapeParams {
+  toolName: string;
+  body?: Record<string, unknown>;
+  query?: Record<string, unknown>;
+  issues: McpPayloadValidationIssue[];
+}
+
+function validateSchemaShape(params: ValidateSchemaShapeParams): void {
+  const { toolName, body, query, issues } = params;
+  const inputSchema = toolInputSchemas.getToolInputSchema({ toolName });
+
+  if (!(inputSchema instanceof z.ZodObject)) {
+    return;
+  }
+
+  const toolInputShape = inputSchema.shape;
+
+  if (toolInputShape.query) {
+    validateValidatePayloadSubSchema({
+      subSchema: toolInputShape.query as z.ZodTypeAny,
+      value: query ?? {},
+      pathPrefix: 'query',
+      issues,
+    });
+  }
+
+  if (toolInputShape.body) {
+    validateValidatePayloadSubSchema({
+      subSchema: toolInputShape.body as z.ZodTypeAny,
+      value: body ?? {},
+      pathPrefix: 'body',
+      issues,
+    });
+  }
+}
+
+interface ValidateValidatePayloadSubSchemaParams {
+  subSchema: z.ZodTypeAny;
+  value: unknown;
+  pathPrefix: string;
+  issues: McpPayloadValidationIssue[];
+}
+
+function validateValidatePayloadSubSchema(params: ValidateValidatePayloadSubSchemaParams): void {
+  const { subSchema, value, pathPrefix, issues } = params;
+  const parsedSubSchema = subSchema.safeParse(value);
+  if (parsedSubSchema.success) {
+    return;
+  }
+
+  for (const zodIssue of parsedSubSchema.error.issues) {
+    const fieldPath =
+      zodIssue.path.length > 0 ? `${pathPrefix}.${zodIssue.path.join('.')}` : pathPrefix;
+    issues.push({
+      path: fieldPath,
+      code: 'invalid_field',
+      message: zodIssue.message,
+    });
+  }
 }
 
 interface BuildValidationResultParams {
@@ -246,6 +305,28 @@ function validateLegacyBillBodyFields(params: ValidateLegacyBillBodyFieldsParams
       message: `Use \`${legacyRule.uuidField}\` (${legacyRule.entityLabel}); numeric \`${legacyRule.bodyField}\` is not accepted on partner bill requests.`,
     });
   }
+
+  const lineItems = body.lineItems;
+  if (!Array.isArray(lineItems)) {
+    return;
+  }
+
+  lineItems.forEach((_lineItem, index) => {
+    if (!_lineItem || typeof _lineItem !== 'object') {
+      return;
+    }
+    const lineItemObject = _lineItem as Record<string, unknown>;
+    if (
+      Object.prototype.hasOwnProperty.call(lineItemObject, 'categoryAccountId') &&
+      !Object.prototype.hasOwnProperty.call(lineItemObject, 'categoryAccountUuid')
+    ) {
+      issues.push({
+        path: `body.lineItems[${index}].categoryAccountId`,
+        code: 'legacy_numeric_field',
+        message: 'Use categoryAccountUuid from list_accounts instead of categoryAccountId.',
+      });
+    }
+  });
 }
 
 interface ValidateRequiredFieldsForToolParams {
@@ -281,10 +362,6 @@ function validateRequiredFieldsForTool(params: ValidateRequiredFieldsForToolPara
   if (toolName === 'COUNT_bulk_update_budget_cells' || toolName === 'COUNT_update_budget_cells') {
     validateBulkBudgetCellRows({ body, issues });
     return;
-  }
-
-  if (toolName === 'COUNT_create_bill') {
-    validateCreateBillBody({ body, issues });
   }
 }
 
@@ -523,85 +600,6 @@ function validateBulkBudgetCellRows(params: ValidateBulkBudgetCellRowsParams): v
         path: `body.updates[${index}].amount`,
         code: 'missing_required',
         message: 'Required field amount must be a valid number.',
-      });
-    }
-  });
-}
-
-interface ValidateCreateBillBodyParams {
-  body: Record<string, unknown>;
-  issues: McpPayloadValidationIssue[];
-}
-
-function validateCreateBillBody(params: ValidateCreateBillBodyParams): void {
-  const { body, issues } = params;
-
-  if (!hasNonEmptyString(body.vendorUuid)) {
-    issues.push({
-      path: 'body.vendorUuid',
-      code: 'missing_required',
-      message: 'Required field vendorUuid (from list_vendors) is missing.',
-    });
-  }
-  if (!hasNonEmptyString(body.date)) {
-    issues.push({
-      path: 'body.date',
-      code: 'missing_required',
-      message: 'Required field date (YYYY-MM-DD) is missing.',
-    });
-  }
-  if (!hasNonEmptyString(body.dueDate)) {
-    issues.push({
-      path: 'body.dueDate',
-      code: 'missing_required',
-      message: 'Required field dueDate (YYYY-MM-DD) is missing.',
-    });
-  }
-  if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
-    issues.push({
-      path: 'body.lineItems',
-      code: 'missing_required',
-      message: 'Required field lineItems must be a non-empty array.',
-    });
-    return;
-  }
-
-  body.lineItems.forEach((_lineItem, index) => {
-    if (!_lineItem || typeof _lineItem !== 'object') {
-      issues.push({
-        path: `body.lineItems[${index}]`,
-        code: 'missing_required',
-        message: 'Each line item must be an object.',
-      });
-      return;
-    }
-    const lineItemObject = _lineItem as Record<string, unknown>;
-    if (!hasNonEmptyString(lineItemObject.categoryAccountUuid)) {
-      issues.push({
-        path: `body.lineItems[${index}].categoryAccountUuid`,
-        code: 'missing_required',
-        message: 'Each line item requires categoryAccountUuid from list_accounts.',
-      });
-    }
-    if (Object.prototype.hasOwnProperty.call(lineItemObject, 'categoryAccountId')) {
-      issues.push({
-        path: `body.lineItems[${index}].categoryAccountId`,
-        code: 'legacy_numeric_field',
-        message: 'Use categoryAccountUuid from list_accounts instead of categoryAccountId.',
-      });
-    }
-    if (!hasRequiredNumericField(lineItemObject.quantity)) {
-      issues.push({
-        path: `body.lineItems[${index}].quantity`,
-        code: 'missing_required',
-        message: 'Each line item requires quantity.',
-      });
-    }
-    if (!hasRequiredNumericField(lineItemObject.price)) {
-      issues.push({
-        path: `body.lineItems[${index}].price`,
-        code: 'missing_required',
-        message: 'Each line item requires price.',
       });
     }
   });

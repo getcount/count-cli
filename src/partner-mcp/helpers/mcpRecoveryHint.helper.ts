@@ -1,3 +1,5 @@
+import { getToolDefinition } from '../tools/definitions.js';
+
 export interface McpRecoveryHint {
   summary: string;
   knowledgeTopic?: string;
@@ -20,6 +22,43 @@ interface RecoveryHintRule {
 }
 
 const GENERIC_PARTNER_FAILURE_MESSAGE = 'could not process your request';
+
+interface ResolveDocumentLifecycleContextParams {
+  toolName: string;
+  message?: string;
+}
+
+function resolveDocumentLifecycleContext(params: ResolveDocumentLifecycleContextParams): 'invoice' | 'bill' | null {
+  const { toolName, message } = params;
+
+  const toolDefinition = getToolDefinition({ toolName });
+  if (toolDefinition?.readOnly) {
+    return null;
+  }
+
+  if (toolName === 'COUNT_assign_transaction_to_bills_invoices') {
+    if (typeof message === 'string') {
+      const normalizedMessage = message.toLowerCase();
+      if (normalizedMessage.includes('bill')) {
+        return 'bill';
+      }
+      if (normalizedMessage.includes('invoice')) {
+        return 'invoice';
+      }
+    }
+    return null;
+  }
+
+  if (toolName.includes('invoice')) {
+    return 'invoice';
+  }
+
+  if (toolName.includes('_bills') || toolName.includes('_bill')) {
+    return 'bill';
+  }
+
+  return null;
+}
 
 const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
   {
@@ -159,6 +198,47 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
     }),
   },
   {
+    matches: (params) => params.statusCode === 429,
+    build: () => ({
+      summary: 'Rate limit exceeded — back off and retry. See rate_limits_and_throttling topic.',
+      knowledgeTopic: 'rate_limits_and_throttling',
+      suggestedNextTools: ['COUNT_knowledge'],
+    }),
+  },
+  {
+    matches: (params) => {
+      const toolName = params.toolName ?? '';
+      const lifecycleContext = resolveDocumentLifecycleContext({
+        toolName,
+        message: params.message,
+      });
+      if (!lifecycleContext) {
+        return false;
+      }
+      return (
+        typeof params.message === 'string' &&
+        (params.message.includes('draft') ||
+          params.message.includes('already approved') ||
+          params.message.includes('cannot update') ||
+          params.message.includes('must be approved'))
+      );
+    },
+    build: (params) => {
+      const lifecycleContext = resolveDocumentLifecycleContext({
+        toolName: params.toolName ?? '',
+        message: params.message,
+      });
+      const isInvoiceContext = lifecycleContext === 'invoice';
+      return {
+        summary: 'Invoice or bill state transition rejected — check invoice_lifecycle or bill_lifecycle topic.',
+        knowledgeTopic: isInvoiceContext ? 'invoice_lifecycle' : 'bill_lifecycle',
+        playbook: isInvoiceContext ? 'create_invoice_and_send' : 'pay_vendor_bill',
+        describeTool: params.toolName,
+        suggestedNextTools: ['COUNT_knowledge', 'COUNT_playbooks', 'COUNT_describe_endpoint'],
+      };
+    },
+  },
+  {
     matches: (params) => {
       if (!params.responseBody || typeof params.responseBody !== 'object') return false;
       const bodyRecord = params.responseBody as Record<string, unknown>;
@@ -174,6 +254,20 @@ const RECOVERY_HINT_RULES: RecoveryHintRule[] = [
       knowledgeTopic: 'partner_warnings',
       describeTool: params.toolName,
       suggestedNextTools: ['COUNT_describe_endpoint', 'COUNT_knowledge'],
+    }),
+  },
+  {
+    matches: (params) =>
+      params.statusCode === 400 &&
+      typeof params.message === 'string' &&
+      (params.message.includes('invalid') ||
+        params.message.includes('required') ||
+        params.message.includes('must be')),
+    build: (params) => ({
+      summary: 'Validation failed — call COUNT_validate_payload with the same toolName, body, and query before retrying.',
+      knowledgeTopic: 'field_naming_reference',
+      describeTool: params.toolName,
+      suggestedNextTools: ['COUNT_validate_payload', 'COUNT_describe_endpoint', 'COUNT_knowledge'],
     }),
   },
 ];
