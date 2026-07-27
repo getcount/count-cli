@@ -1,6 +1,6 @@
 {
   "name": "@countfinancial/cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "COUNT Partner CLI — OAuth login and local MCP server for Claude Code, Cursor, and agents.",
   "license": "ISC",
   "type": "module",
