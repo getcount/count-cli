@@ -87,6 +87,85 @@ export const assignTransactionToBillsInvoicesBodySchema = z.object({
   parentCategoryAccountUuid: externalUuidSchema.optional(),
 });
 
+export const excludeTransactionsBulkBodySchema = z.object({
+  transactionUuids: z
+    .array(externalUuidSchema)
+    .min(1)
+    .max(100)
+    .describe('External transaction UUIDs from list_transactions or get_transaction.'),
+  excluded: z.boolean().describe('true to exclude (hide from the ledger), false to un-exclude.'),
+});
+
+export const bulkChangeTransactionCategoryBodySchema = z.object({
+  categoryAccountUuid: externalUuidSchema.nullable().describe('Category account UUID, or null to uncategorize.'),
+  transactionUuids: z
+    .array(externalUuidSchema)
+    .min(1)
+    .max(100)
+    .describe('External transaction UUIDs from list_transactions or get_transaction.'),
+});
+
+const splitTransactionCategoryRowSchema = z
+  .object({
+    categoryAccountUuid: externalUuidSchema.optional(),
+    amount: partnerNumericValueOptionalSchema,
+    assignThis: z.boolean().optional(),
+    originalAmount: partnerNumericValueOptionalSchema,
+    type: transactionTypeFilterSchema.optional(),
+  })
+  .passthrough();
+
+export const splitTransactionBodySchema = z
+  .object({
+    forAttachment: z.boolean().optional().describe('When true, skips queue side effects used during bill/invoice attachment.'),
+    splitASplit: z.boolean().optional().describe('When true, splits an existing split child row.'),
+    withCaution: z.boolean().optional().describe('Required to split reconciled transactions.'),
+    parent: splitTransactionCategoryRowSchema.optional(),
+    splits: z.array(splitTransactionCategoryRowSchema).optional(),
+  })
+  .passthrough()
+  .describe('Split a transaction into a parent row plus child rows before bill/invoice assignment.');
+
+export const setOpeningBalanceBodySchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        accountUuid: externalUuidSchema.describe('External account UUID from list_accounts.'),
+        debit: partnerNumericValueSchema.describe('Opening debit amount for this account (0 if none).'),
+        credit: partnerNumericValueSchema.describe('Opening credit amount for this account (0 if none).'),
+      })
+    )
+    .min(1)
+    .describe('Opening balance rows. Total debits must equal total credits across all rows.'),
+  replaceExisting: z
+    .boolean()
+    .optional()
+    .describe(
+      'Required (true) to overwrite an existing draft or published opening balance for this workspace. Omitted/false rejects with 409 if one already exists — use get_opening_balance to check first.'
+    ),
+});
+
+export const createReconciliationBodySchema = z.object({
+  accountUuid: externalUuidSchema.describe('External account UUID from list_accounts.'),
+  endingBalanceDate: isoDateSchema.describe('Bank/statement ending date for this reconciliation period (YYYY-MM-DD).'),
+  endingBalanceAmount: partnerNumericValueSchema.describe('Statement ending balance for the account.'),
+});
+
+export const completeReconciliationBodySchema = z.object({
+  autoReconcile: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, also marks unreviewed journal entries in the period as reviewed and reconciles them. Defaults to false, which only reconciles entries already marked reviewed.'
+    ),
+});
+
+export const updateWorkspaceBodySchema = z.object({
+  cutoverDate: isoDateSchema.describe(
+    'New workspace cutover date (YYYY-MM-DD). Moving it forward is only allowed when the workspace has no posted journal entries yet.'
+  ),
+});
+
 export const createAccountBodySchema = z
   .object({
     name: z.string().min(1).describe('Account display name.'),
@@ -103,6 +182,14 @@ export const createAccountBodySchema = z
   .passthrough();
 
 export const updateAccountBodySchema = createAccountBodySchema.partial().passthrough();
+
+export const bulkCreateAccountsBodySchema = z.object({
+  accounts: z
+    .array(createAccountBodySchema)
+    .min(1)
+    .max(100)
+    .describe('Up to 100 account rows — same shape as create_account.'),
+});
 
 export const createCustomerBodySchema = z
   .object({
@@ -426,11 +513,14 @@ export const createProductBodySchema = z
 
 export const createVendorBodySchema = z
   .object({
-    vendor: z.string().optional(),
-    name: z.string().optional(),
+    vendor: z.string().min(1).optional().describe('Vendor display name (alias for name).'),
+    name: z.string().min(1).optional().describe('Vendor display name.'),
     email: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((body) => Boolean(body.name?.trim()) || Boolean(body.vendor?.trim()), {
+    message: 'Either name or vendor is required.',
+  });
 
 export const createTagBodySchema = z.object({
   name: z.string().min(1),

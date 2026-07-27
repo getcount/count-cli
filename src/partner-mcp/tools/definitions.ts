@@ -157,6 +157,17 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     destructive: false,
   },
   {
+    name: 'COUNT_split_transaction',
+    title: 'Split Transaction',
+    description:
+      'Split an existing transaction into a parent row plus child rows before assigning part of the amount to a bill or invoice. URL `{id}` is the transaction UUID from `list_transactions`. Body mirrors the COUNT UI split flow: `{ forAttachment?: boolean, splitASplit?: boolean, withCaution?: boolean, parent?: { categoryAccountUuid, amount?, assignThis?, originalAmount?, type? }, splits?: [{ categoryAccountUuid, amount }] }`. Use `categoryAccountUuid` values from `list_accounts` (cannot target a system control account). Transfer and deposit transactions cannot be split. Reconciled transactions require `withCaution: true`. **400s if the transaction is already linked to a bill or invoice** — unassign it first. **Omitting `splits` (or sending `[]`) does not no-op — it UN-SPLITS an already-split transaction**, permanently destroying every existing split-child row and restoring the parent to its original un-split amount; never send an empty `splits` array unless that is the intent. After splitting, assign the intended child row with `COUNT_assign_transaction_to_bills_invoices`.',
+    method: 'PUT',
+    pathTemplate: '/partners/transactions/{id}/split',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
     name: 'COUNT_delete_transaction',
     title: 'Delete Transaction',
     description: 'Delete a transaction by external UUID.',
@@ -165,6 +176,28 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     requiresUserAuth: true,
     readOnly: false,
     destructive: true,
+  },
+  {
+    name: 'COUNT_bulk_exclude_transactions',
+    title: 'Bulk Exclude Transactions',
+    description:
+      'Exclude or un-exclude up to 100 transactions in one call by external UUID (`body.transactionUuids`, `body.excluded: boolean`). Excluding hides a transaction from the ledger without deleting it — preserves the audit trail and survives bank-feed re-sync, unlike `COUNT_delete_transaction`. This is a per-row partial-success operation, same as `COUNT_bulk_change_transaction_category`: an unresolvable UUID, or a transaction that is reviewed/reconciled/pending/attached to a bill/invoice/transfer/deposit, becomes one entry in the response `failures` array instead of failing the whole batch — exclude only unreviewed transactions to avoid failures. Response: `{ updatedTransactions, successCount, failedCount, failures: [{ transactionUuid, reasons: string[] }] }`. To exclude by date range, first call `COUNT_list_transactions` with `startDate`/`endDate` (and `reviewed: false`) to collect UUIDs, then pass them here.',
+    method: 'PATCH',
+    pathTemplate: '/partners/transactions/exclude-bulk',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_bulk_change_transaction_category',
+    title: 'Bulk Change Transaction Category',
+    description:
+      'Categorize (or uncategorize) up to 100 EXISTING transactions in one call. Body: `categoryAccountUuid` (a category account UUID from `list_accounts`, or `null` to uncategorize) and `transactionUuids` (array). This is a per-row partial-success operation, same as `COUNT_bulk_exclude_transactions`: an unresolvable UUID, or a transaction that is reviewed/reconciled/pending/attached to a bill/invoice/transfer/deposit, becomes one entry in the response `failures` array rather than failing the whole batch. Response: `{ updatedTransactions, successCount, failedCount, failures: [{ transactionUuid, reasons: string[] }] }`. For NEW transactions, pass `categoryAccountUuid` directly to `COUNT_create_transaction`/`COUNT_bulk_create_transactions` instead — no follow-up call needed. For a single existing transaction, `COUNT_change_transaction_category` is equivalent and returns the full updated row.',
+    method: 'PATCH',
+    pathTemplate: '/partners/transactions/change-category-bulk',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
   },
   {
     name: 'COUNT_list_account_sub_types',
@@ -181,7 +214,7 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     name: 'COUNT_list_accounts',
     title: 'List Chart Of Accounts',
     description:
-      'List chart of accounts for the authenticated COUNT workspace. When you need a `subTypeId` for a **new** account and no similar account exists yet, prefer `COUNT_list_account_sub_types` instead of guessing from sparse ids. Optional filters (pass under `query`): `type` must be one of `Assets`, `Liabilities`, `Equity`, `Income`, `Expenses` (case-sensitive, plural — singular forms like "Asset" are rejected); `subTypeId` is a positive integer; `search` is a substring matched against account name / number; boolean-string filters `inactive`, `includeBalances`, `includeHidden`, `includeHiddenAccounts`, `is1099Box`, `notAssignedToReporter`, `onlyCategoryAccounts`, `includeDeleteMeta` accept `"true"` / `"false"`. Existing rows include `subType.id` — you may reuse that integer when creating another account in the same bucket.',
+      'List chart of accounts for the authenticated COUNT workspace. When you need a `subTypeId` for a **new** account and no similar account exists yet, prefer `COUNT_list_account_sub_types` instead of guessing from sparse ids. Optional filters (pass under `query`): `type` must be one of `Assets`, `Liabilities`, `Equity`, `Income`, `Expenses` (case-sensitive, plural — singular forms like "Asset" are rejected); `subTypeId` is a positive integer; `search` is a substring matched against account name / number; boolean-string filters `inactive`, `includeBalances`, `includeHidden`, `includeHiddenAccounts`, `is1099Box`, `notAssignedToReporter`, `onlyCategoryAccounts`, `includeDeleteMeta` accept `"true"` / `"false"`. Each row includes `editable` (`false` for system/control/connected accounts). When `includeDeleteMeta=true`, each row also includes `canDelete` and `deleteBlockedReason` (`NOT_EDITABLE`, `HAS_JOURNAL_ENTRIES`, `HAS_SUB_ACCOUNTS`, `HAS_INVOICE_PRODUCTS`, `HAS_PAYROLL_MAPPINGS`) so you can tell whether update/delete will succeed before calling those tools. Existing rows include `subType.id` — you may reuse that integer when creating another account in the same bucket.',
     method: 'GET',
     pathTemplate: '/partners/chart-of-accounts',
     requiresUserAuth: true,
@@ -200,6 +233,17 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     destructive: false,
   },
   {
+    name: 'COUNT_bulk_create_accounts',
+    title: 'Bulk Create Accounts',
+    description:
+      'Create up to 100 chart-of-accounts entries in a single call. Body: `{ "accounts": [<row>, ...] }` where each `<row>` uses the EXACT same shape as `COUNT_create_account` (required `name` and `subTypeId`; optional `accountNumber`, `currency`, `description`, `color`, `parentAccountId`, `institutionId`, `taxes`, `status`). **Partial-success contract**: each row runs in its own DB transaction; one row failing never rolls back another row\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "account": {...} } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the rows where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all rows failed. **Cap**: 100 rows per call. **Recommended batch size**: ~25 rows for migrations. **Complete the full chart of accounts before importing bills or transactions** — accounts with journal entries cannot be deleted (`deleteBlockedReason: HAS_JOURNAL_ENTRIES`); use `COUNT_update_account` with `status: inactive` instead.',
+    method: 'POST',
+    pathTemplate: '/partners/chart-of-accounts/bulk',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
     name: 'COUNT_update_account',
     title: 'Update Account',
     description:
@@ -213,7 +257,8 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
   {
     name: 'COUNT_delete_account',
     title: 'Delete Account',
-    description: 'Delete a chart of accounts entry by external UUID.',
+    description:
+      'Delete a chart of accounts entry by external UUID. Partner-created accounts are editable and deletable until they have journal entries, sub-accounts, invoice products, or payroll mappings. If delete fails because the account has journal entries, use `COUNT_update_account` with `status: inactive` instead. Call `COUNT_list_accounts` with `query.includeDeleteMeta: "true"` to read `canDelete` and `deleteBlockedReason` before attempting delete.',
     method: 'DELETE',
     pathTemplate: '/partners/chart-of-accounts/{id}',
     requiresUserAuth: true,
@@ -1325,6 +1370,61 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     pathTemplate: '/partners/workspace-stats',
     requiresUserAuth: true,
     readOnly: true,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_update_workspace',
+    title: 'Update Workspace',
+    description:
+      'Update workspace-level settings for the authenticated workspace. Currently supports `cutoverDate` (required, YYYY-MM-DD) — the date COUNT-managed bookkeeping begins; everything on/before it is summarized by opening balances rather than tracked line-by-line. Moving it backward (earlier) is always allowed. Moving it forward (later) is only allowed when the workspace has zero posted journal entries yet — this is a re-baseline guard, not a UI limitation, so it rejects with a 400 explaining the entry count if the workspace already has posted activity. Setting the cutover date for the first time is rejected with a 400 if the workspace already has an imported trial balance, since that would leave opening balances anchored to no cutover date — contact support to resolve first. Use `get_workspace_stats` (`workspace.cutoverDate`) to read the current value first.',
+    method: 'PATCH',
+    pathTemplate: '/partners/workspace',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_get_opening_balance',
+    title: 'Get Opening Balance',
+    description:
+      'Read the workspace\'s opening balance (COUNT calls this the "conversion balance" internally): status (`none`/`draft`/`published`), the cutover date it is anchored to, and the current rows (`accountUuid`, `accountName`, `accountType`, `debit`, `credit`). Call this before `COUNT_set_opening_balance` to check whether one already exists and needs `replaceExisting: true`.',
+    method: 'GET',
+    pathTemplate: '/partners/opening-balance',
+    requiresUserAuth: true,
+    readOnly: true,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_set_opening_balance',
+    title: 'Set Opening Balance',
+    description:
+      'Set the workspace\'s opening balance as of its cutover date (use `COUNT_update_workspace` to set the cutover date first). Body: `rows` (required, non-empty array of `{ accountUuid, debit, credit }` — total debits must equal total credits) and `replaceExisting` (required `true` to overwrite an existing draft or published opening balance; omitted/false rejects with 409 if one already exists — check first with `COUNT_get_opening_balance`). This drafts and immediately publishes in one call: it posts the balancing journal entry at the cutover date, so it only works while the workspace is still onboarding (`team.isOnboarding === true`) and rejects with 400 once onboarding is complete. If publish-time validation fails (e.g. unbalanced control accounts) after the draft was saved, the draft persists — retry with `replaceExisting: true` after fixing the rows.',
+    method: 'POST',
+    pathTemplate: '/partners/opening-balance',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_create_reconciliation',
+    title: 'Create Reconciliation',
+    description:
+      'Start a bank reconciliation for an account: creates a DRAFT reconciliation record for a statement period. Body: `accountUuid` (required, from `list_accounts`), `endingBalanceDate` (required, YYYY-MM-DD — the statement ending date), `endingBalanceAmount` (required — the statement ending balance). Rejects with 400 if a draft or completed reconciliation already exists for that date, or if a later completed reconciliation already exists for this account (reconciliations must complete in date order). The opening balance is taken automatically from the account\'s last completed reconciliation. The response `id` is the reconciliation UUID — pass it to `COUNT_complete_reconciliation` to lock it once the ending balance is verified. Only reconciles journal entries already marked reviewed unless `COUNT_complete_reconciliation` is called with `autoReconcile: true`.',
+    method: 'POST',
+    pathTemplate: '/partners/reconciliations',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
+    name: 'COUNT_complete_reconciliation',
+    title: 'Complete Reconciliation',
+    description:
+      'Lock a draft reconciliation by its UUID (from `COUNT_create_reconciliation`), marking every reviewed journal entry in the account for that period as `reconciled: true` and stamping them with this reconciliation. Optional `body.autoReconcile: true` also marks unreviewed entries in the period as reviewed and reconciles them (defaults to false — reconciling only what a human already reviewed). Rejects with 404 if the reconciliation is not a pending draft (already completed, or does not exist), and with 400 if the ending balance date falls in a book-closed sealed period, or if completing it would violate reconciliation date ordering (an earlier draft is still open, or a later reconciliation is already complete). This is the only way to set `reconciled: true` on transactions/journal entries via the partner API — there is no direct writable field for it.',
+    method: 'PATCH',
+    pathTemplate: '/partners/reconciliations/{id}/complete',
+    requiresUserAuth: true,
+    readOnly: false,
     destructive: false,
   },
 ];

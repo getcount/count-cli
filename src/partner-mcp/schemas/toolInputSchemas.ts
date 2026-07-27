@@ -4,11 +4,15 @@ import {
   applyMultipleCreditsToInvoiceBodySchema,
   applyVendorMemosToBillBodySchema,
   assignTransactionToBillsInvoicesBodySchema,
+  bulkChangeTransactionCategoryBodySchema,
   bulkCreateCustomersBodySchema,
+  bulkCreateAccountsBodySchema,
   bulkCreateJournalEntriesBodySchema,
   bulkCreateTransactionsBodySchema,
   bulkUpdateCustomersBodySchema,
   changeTransactionCategoryBodySchema,
+  completeReconciliationBodySchema,
+  createReconciliationBodySchema,
   createAccountBodySchema,
   createBillBodySchema,
   createBudgetBodySchema,
@@ -35,11 +39,15 @@ import {
   removeInvoiceCreditBodySchema,
   removeInvoiceTransactionBodySchema,
   sendInvoiceBodySchema,
+  setOpeningBalanceBodySchema,
+  splitTransactionBodySchema,
+  excludeTransactionsBulkBodySchema,
   unassignBillTransactionBodySchema,
   updateAccountBodySchema,
   updateBillBodySchema,
   updateBudgetCellsBodySchema,
   updateTransactionBodySchema,
+  updateWorkspaceBodySchema,
 } from './bodies.js';
 import {
   buildBodyToolInputSchema,
@@ -122,11 +130,19 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
   COUNT_assign_transaction_to_bills_invoices: buildIdBodyToolInputSchema({
     bodyObjectSchema: assignTransactionToBillsInvoicesBodySchema,
   }),
+  COUNT_split_transaction: buildIdBodyToolInputSchema({
+    bodyObjectSchema: splitTransactionBodySchema,
+  }),
   COUNT_delete_transaction: genericIdSchema,
+  COUNT_bulk_exclude_transactions: buildBodyToolInputSchema({ bodyObjectSchema: excludeTransactionsBulkBodySchema }),
+  COUNT_bulk_change_transaction_category: buildBodyToolInputSchema({
+    bodyObjectSchema: bulkChangeTransactionCategoryBodySchema,
+  }),
 
   COUNT_list_account_sub_types: buildQueryToolInputSchema({ queryObjectSchema: listAccountSubTypesQuerySchema }),
   COUNT_list_accounts: buildQueryToolInputSchema({ queryObjectSchema: listAccountsQuerySchema }),
   COUNT_create_account: buildBodyToolInputSchema({ bodyObjectSchema: createAccountBodySchema }),
+  COUNT_bulk_create_accounts: buildBodyToolInputSchema({ bodyObjectSchema: bulkCreateAccountsBodySchema }),
   COUNT_update_account: buildIdBodyToolInputSchema({ bodyObjectSchema: updateAccountBodySchema }),
   COUNT_delete_account: genericIdSchema,
 
@@ -266,6 +282,16 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
   COUNT_duplicate_budget: buildIdBodyToolInputSchema({ bodyObjectSchema: duplicateBudgetBodySchema }),
 
   COUNT_get_workspace_stats: buildQueryToolInputSchema({ queryObjectSchema: workspaceStatsQuerySchema }),
+  COUNT_update_workspace: buildBodyToolInputSchema({ bodyObjectSchema: updateWorkspaceBodySchema }),
+
+  COUNT_get_opening_balance: buildEmptyToolInputSchema(),
+  COUNT_set_opening_balance: buildBodyToolInputSchema({ bodyObjectSchema: setOpeningBalanceBodySchema }),
+
+  COUNT_create_reconciliation: buildBodyToolInputSchema({ bodyObjectSchema: createReconciliationBodySchema }),
+  COUNT_complete_reconciliation: buildIdBodyToolInputSchema({
+    bodyObjectSchema: completeReconciliationBodySchema,
+    optionalBody: true,
+  }),
 };
 
 export interface ToolOutputShapeNote {
