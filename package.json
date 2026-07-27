@@ -24,7 +24,7 @@
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
     "check:types": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test \"dist/__tests__/**/*.test.js\""
+    "test": "npm run build && node --test dist/__tests__/*.test.js"
   },
   "publishConfig": {
     "access": "public"
