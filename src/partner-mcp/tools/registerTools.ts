@@ -62,7 +62,7 @@ export function registerTools(params: RegisterToolsParams): void {
         outputSchema: { result: z.unknown() },
         annotations: buildAnnotations({ tool }),
       },
-      async (input: Record<string, unknown>) => executeTool({ tool, input, client }),
+      async (input: Record<string, unknown>) => executeCountPartnerTool({ tool, input, client }),
     );
   }
 }
@@ -78,7 +78,7 @@ function buildAnnotations(params: BuildAnnotationsParams): ToolAnnotations {
   };
 }
 
-async function executeTool(params: ExecuteToolParams): Promise<CallToolResult> {
+export async function executeCountPartnerTool(params: ExecuteToolParams): Promise<CallToolResult> {
   const { tool, input, client } = params;
 
   try {

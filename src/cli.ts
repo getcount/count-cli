@@ -3,6 +3,7 @@ import { runInitCommand } from './commands/init.command.js';
 import { runLoginCommand } from './commands/login.command.js';
 import { runLogoutCommand } from './commands/logout.command.js';
 import { runDoctorCommand } from './commands/doctor.command.js';
+import { runTestToolsCommand } from './commands/testTools.command.js';
 import { runMcpInstallCommand } from './commands/mcpInstall.command.js';
 import { runMcpPrintConfigCommand, runMcpStartCommand } from './commands/mcp.command.js';
 import {
@@ -73,6 +74,20 @@ export function createCli(params: CreateCliParams): Command {
       const globalOptions = readGlobalOptions(command);
       const exitCode = await runDoctorCommand({
         profileName: globalOptions.profile,
+        json: globalOptions.json,
+      });
+      process.exit(exitCode);
+    });
+
+  program
+    .command('test-tools')
+    .description('Smoke-test all COUNT MCP tools and write an HTML report')
+    .option('--html <outputPath>', 'HTML report output path', 'count-cli-test-report.html')
+    .action(async (options, command) => {
+      const globalOptions = readGlobalOptions(command);
+      const exitCode = await runTestToolsCommand({
+        profileName: globalOptions.profile,
+        htmlOutputPath: options.html,
         json: globalOptions.json,
       });
       process.exit(exitCode);

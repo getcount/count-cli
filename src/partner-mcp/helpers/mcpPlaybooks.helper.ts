@@ -286,10 +286,11 @@ export const MCP_PLAYBOOKS: McpPlaybook[] = [
       },
       {
         stepNumber: 4,
-        instruction: 'Create missing bank, credit card, and category accounts in the chart of accounts.',
-        toolName: 'COUNT_create_account',
+        instruction:
+          'Create all missing bank, credit card, and category accounts before importing bills or transactions. Complete the full chart of accounts first — accounts with journal entries cannot be deleted afterward.',
+        toolName: 'COUNT_bulk_create_accounts',
         inputGuidance:
-          'body: { name, subTypeId }. Optional parentAccountId for sub-accounts. Repeat for each account missing from step 2.',
+          'body: { accounts: [{ name, subTypeId }, ...] }. Same shape as COUNT_create_account per row. Chunk at 100 rows per call (~25 recommended). Retry only rows where success is false.',
       },
       {
         stepNumber: 5,

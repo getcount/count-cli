@@ -214,7 +214,7 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     name: 'COUNT_list_accounts',
     title: 'List Chart Of Accounts',
     description:
-      'List chart of accounts for the authenticated COUNT workspace. When you need a `subTypeId` for a **new** account and no similar account exists yet, prefer `COUNT_list_account_sub_types` instead of guessing from sparse ids. Optional filters (pass under `query`): `type` must be one of `Assets`, `Liabilities`, `Equity`, `Income`, `Expenses` (case-sensitive, plural — singular forms like "Asset" are rejected); `subTypeId` is a positive integer; `search` is a substring matched against account name / number; boolean-string filters `inactive`, `includeBalances`, `includeHidden`, `includeHiddenAccounts`, `is1099Box`, `notAssignedToReporter`, `onlyCategoryAccounts`, `includeDeleteMeta` accept `"true"` / `"false"`. Existing rows include `subType.id` — you may reuse that integer when creating another account in the same bucket.',
+      'List chart of accounts for the authenticated COUNT workspace. When you need a `subTypeId` for a **new** account and no similar account exists yet, prefer `COUNT_list_account_sub_types` instead of guessing from sparse ids. Optional filters (pass under `query`): `type` must be one of `Assets`, `Liabilities`, `Equity`, `Income`, `Expenses` (case-sensitive, plural — singular forms like "Asset" are rejected); `subTypeId` is a positive integer; `search` is a substring matched against account name / number; boolean-string filters `inactive`, `includeBalances`, `includeHidden`, `includeHiddenAccounts`, `is1099Box`, `notAssignedToReporter`, `onlyCategoryAccounts`, `includeDeleteMeta` accept `"true"` / `"false"`. Each row includes `editable` (`false` for system/control/connected accounts). When `includeDeleteMeta=true`, each row also includes `canDelete` and `deleteBlockedReason` (`NOT_EDITABLE`, `HAS_JOURNAL_ENTRIES`, `HAS_SUB_ACCOUNTS`, `HAS_INVOICE_PRODUCTS`, `HAS_PAYROLL_MAPPINGS`) so you can tell whether update/delete will succeed before calling those tools. Existing rows include `subType.id` — you may reuse that integer when creating another account in the same bucket.',
     method: 'GET',
     pathTemplate: '/partners/chart-of-accounts',
     requiresUserAuth: true,
@@ -233,6 +233,17 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
     destructive: false,
   },
   {
+    name: 'COUNT_bulk_create_accounts',
+    title: 'Bulk Create Accounts',
+    description:
+      'Create up to 100 chart-of-accounts entries in a single call. Body: `{ "accounts": [<row>, ...] }` where each `<row>` uses the EXACT same shape as `COUNT_create_account` (required `name` and `subTypeId`; optional `accountNumber`, `currency`, `description`, `color`, `parentAccountId`, `institutionId`, `taxes`, `status`). **Partial-success contract**: each row runs in its own DB transaction; one row failing never rolls back another row\'s writes. Response envelope: `{ "successCount": N, "errorCount": M, "results": [{ "index": 0, "success": true, "account": {...} } | { "index": 1, "success": false, "error": "..." }, ...] }` — read `errorCount` first; if non-zero, iterate `results` and only retry the rows where `success: false`. The HTTP status is always `201` when the batch was accepted, even if all rows failed. **Cap**: 100 rows per call. **Recommended batch size**: ~25 rows for migrations. **Complete the full chart of accounts before importing bills or transactions** — accounts with journal entries cannot be deleted (`deleteBlockedReason: HAS_JOURNAL_ENTRIES`); use `COUNT_update_account` with `status: inactive` instead.',
+    method: 'POST',
+    pathTemplate: '/partners/chart-of-accounts/bulk',
+    requiresUserAuth: true,
+    readOnly: false,
+    destructive: false,
+  },
+  {
     name: 'COUNT_update_account',
     title: 'Update Account',
     description:
@@ -246,7 +257,8 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
   {
     name: 'COUNT_delete_account',
     title: 'Delete Account',
-    description: 'Delete a chart of accounts entry by external UUID.',
+    description:
+      'Delete a chart of accounts entry by external UUID. Partner-created accounts are editable and deletable until they have journal entries, sub-accounts, invoice products, or payroll mappings. If delete fails because the account has journal entries, use `COUNT_update_account` with `status: inactive` instead. Call `COUNT_list_accounts` with `query.includeDeleteMeta: "true"` to read `canDelete` and `deleteBlockedReason` before attempting delete.',
     method: 'DELETE',
     pathTemplate: '/partners/chart-of-accounts/{id}',
     requiresUserAuth: true,

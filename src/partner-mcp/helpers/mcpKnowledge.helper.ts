@@ -105,7 +105,7 @@ export const MCP_KNOWLEDGE_TOPICS: McpKnowledgeTopic[] = [
     id: 'create_chart_of_accounts_account',
     title: 'How do I create a new chart-of-accounts account (e.g. credit card)?',
     summary:
-      'Call COUNT_list_account_sub_types first, pick the matching sub-type id, then COUNT_create_account. Never guess subTypeId values.',
+      'Call COUNT_list_account_sub_types first, pick the matching sub-type id, then COUNT_create_account or COUNT_bulk_create_accounts. Never guess subTypeId values. Complete the chart of accounts before importing bills or transactions.',
     relatedTopicIds: ['external_uuids', 'describe_endpoint'],
     keywords: [
       'create account',
@@ -119,9 +119,10 @@ export const MCP_KNOWLEDGE_TOPICS: McpKnowledgeTopic[] = [
     content: [
       'To create a new account (bank, credit card, expense category, etc.):',
       '1. COUNT_list_account_sub_types — optional query.type filter (e.g. "Liabilities" for a credit card). Pick the row whose name matches what you need and copy its integer id.',
-      '2. COUNT_create_account — body.name plus body.subTypeId set to that id.',
+      '2. COUNT_create_account — body.name plus body.subTypeId set to that id. For migrations with many accounts, prefer COUNT_bulk_create_accounts (up to 100 rows per call, partial success).',
       '3. If a similar account already exists, you may instead COUNT_list_accounts with query.type and reuse subType.id from an existing row.',
       '',
+      'Complete the full chart of accounts before importing bills or transactions. Partner-created accounts stay editable until used in postings. If delete fails with HAS_JOURNAL_ENTRIES, use COUNT_update_account with status inactive instead.',
       'Never guess or sequentially probe subTypeId numbers — they are sparse global ids, not a predictable sequence.',
       'If create_account fails, tell the user COUNT could not create the account and share requestId when present. Do not quote stack traces, file paths, or internal database fields.',
     ].join('\n'),

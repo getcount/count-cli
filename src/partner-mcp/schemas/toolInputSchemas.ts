@@ -6,6 +6,7 @@ import {
   assignTransactionToBillsInvoicesBodySchema,
   bulkChangeTransactionCategoryBodySchema,
   bulkCreateCustomersBodySchema,
+  bulkCreateAccountsBodySchema,
   bulkCreateJournalEntriesBodySchema,
   bulkCreateTransactionsBodySchema,
   bulkUpdateCustomersBodySchema,
@@ -141,6 +142,7 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
   COUNT_list_account_sub_types: buildQueryToolInputSchema({ queryObjectSchema: listAccountSubTypesQuerySchema }),
   COUNT_list_accounts: buildQueryToolInputSchema({ queryObjectSchema: listAccountsQuerySchema }),
   COUNT_create_account: buildBodyToolInputSchema({ bodyObjectSchema: createAccountBodySchema }),
+  COUNT_bulk_create_accounts: buildBodyToolInputSchema({ bodyObjectSchema: bulkCreateAccountsBodySchema }),
   COUNT_update_account: buildIdBodyToolInputSchema({ bodyObjectSchema: updateAccountBodySchema }),
   COUNT_delete_account: genericIdSchema,
 

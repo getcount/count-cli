@@ -183,6 +183,14 @@ export const createAccountBodySchema = z
 
 export const updateAccountBodySchema = createAccountBodySchema.partial().passthrough();
 
+export const bulkCreateAccountsBodySchema = z.object({
+  accounts: z
+    .array(createAccountBodySchema)
+    .min(1)
+    .max(100)
+    .describe('Up to 100 account rows — same shape as create_account.'),
+});
+
 export const createCustomerBodySchema = z
   .object({
     customer: z.string().min(1).describe('Business or person name.'),
@@ -505,11 +513,14 @@ export const createProductBodySchema = z
 
 export const createVendorBodySchema = z
   .object({
-    vendor: z.string().optional(),
-    name: z.string().optional(),
+    vendor: z.string().min(1).optional().describe('Vendor display name (alias for name).'),
+    name: z.string().min(1).optional().describe('Vendor display name.'),
     email: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((body) => Boolean(body.name?.trim()) || Boolean(body.vendor?.trim()), {
+    message: 'Either name or vendor is required.',
+  });
 
 export const createTagBodySchema = z.object({
   name: z.string().min(1),
