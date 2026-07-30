@@ -93,6 +93,15 @@ export const listInvoicesQuerySchema = paginationSearchQuerySchema.extend({
   isDraft: booleanQuerySchema,
 });
 
+export const listRecurringInvoiceTemplatesQuerySchema = paginationSearchQuerySchema.extend({
+  isDraft: z
+    .union([z.boolean(), z.enum(['true', 'false', 'all'])])
+    .optional()
+    .describe(
+      'Draft filter: true returns only templates still seeded from a draft invoice, false (default) returns only active templates, all returns both.'
+    ),
+});
+
 export const listProjectsQuerySchema = paginationSearchQuerySchema.extend({
   customerUuids: commaSeparatedUuidsSchema.describe('Comma-separated customer UUIDs.'),
   statusUuids: commaSeparatedUuidsSchema.describe('Comma-separated project status UUIDs from list_project_statuses.'),

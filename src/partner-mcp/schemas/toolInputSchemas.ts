@@ -70,6 +70,7 @@ import {
   listInvoicesQuerySchema,
   listProjectTasksQuerySchema,
   listProjectsQuerySchema,
+  listRecurringInvoiceTemplatesQuerySchema,
   listTasksQuerySchema,
   listTimeEntriesQuerySchema,
   listTransactionsQuerySchema,
@@ -203,7 +204,9 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
     bodyObjectSchema: removeInvoiceTransactionBodySchema,
   }),
 
-  COUNT_list_recurring_invoice_templates: listPaginationQuerySchema,
+  COUNT_list_recurring_invoice_templates: buildQueryToolInputSchema({
+    queryObjectSchema: listRecurringInvoiceTemplatesQuerySchema,
+  }),
   COUNT_get_recurring_invoice_template: genericIdSchema,
   COUNT_create_recurring_invoice_template: buildBodyToolInputSchema({
     bodyObjectSchema: createRecurringInvoiceTemplateBodySchema,

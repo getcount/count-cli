@@ -706,7 +706,8 @@ const rawTools: Omit<ToolDefinition, 'inputSchema'>[] = [
   {
     name: 'COUNT_list_recurring_invoice_templates',
     title: 'List Recurring Invoice Templates',
-    description: 'List recurring invoice templates for the authenticated COUNT workspace.',
+    description:
+      'List recurring invoice templates for the authenticated COUNT workspace. Defaults to active (non-draft) templates only; pass isDraft=true to retrieve templates still seeded from a draft invoice, or isDraft=all for both.',
     method: 'GET',
     pathTemplate: '/partners/recurring-invoice-templates',
     requiresUserAuth: true,
